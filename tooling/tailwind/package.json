@@ -1,0 +1,10 @@
+{
+  "name": "@sme/tailwind-config",
+  "version": "0.0.0",
+  "private": true,
+  "files": ["tailwind.config.ts", "postcss.config.js"],
+  "devDependencies": {
+    "tailwindcss": "^3.4.0",
+    "tailwindcss-animate": "^1.0.7"
+  }
+}

@@ -3,7 +3,7 @@ import { eq } from "drizzle-orm";
 import {
   router,
   tenantProcedure,
-  adminProcedure,
+  superAdminProcedure,
 } from "../procedures";
 import { db } from "../../db/index";
 import { systemModules } from "../../db/schema/index";
@@ -15,6 +15,7 @@ import {
   getEnabledModules,
 } from "../../modules/index";
 import { enableModuleSchema, disableModuleSchema } from "@sme/shared";
+import { z } from "zod";
 
 // ============================================
 // Modules Router — manage modules per tenant
@@ -54,14 +55,20 @@ export const modulesRouter = router({
   }),
 
   /**
-   * Enable a module for the current tenant.
+   * Enable a module for a tenant.
+   * SECURITY: Only super admins (platform owner) can enable/disable modules.
+   * This is the monetization model — tenants do NOT control their own modules.
    */
-  enable: adminProcedure
-    .input(enableModuleSchema)
+  enable: superAdminProcedure
+    .input(
+      enableModuleSchema.extend({
+        tenantId: z.string().uuid(),
+      })
+    )
     .mutation(async ({ input, ctx }) => {
       try {
         await enableModule(
-          ctx.tenantId,
+          input.tenantId,
           input.moduleId,
           input.config,
           ctx.session.user.id
@@ -79,14 +86,19 @@ export const modulesRouter = router({
     }),
 
   /**
-   * Disable a module for the current tenant.
+   * Disable a module for a tenant.
+   * SECURITY: Only super admins (platform owner) can enable/disable modules.
    */
-  disable: adminProcedure
-    .input(disableModuleSchema)
+  disable: superAdminProcedure
+    .input(
+      disableModuleSchema.extend({
+        tenantId: z.string().uuid(),
+      })
+    )
     .mutation(async ({ input, ctx }) => {
       try {
         await disableModule(
-          ctx.tenantId,
+          input.tenantId,
           input.moduleId,
           ctx.session.user.id
         );

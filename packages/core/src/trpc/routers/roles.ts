@@ -13,11 +13,30 @@ import {
   createRoleSchema,
   updateRoleSchema,
 } from "@sme/shared";
+import { hasPermission } from "@sme/shared";
 import { z } from "zod";
 
 // ============================================
 // Roles Router — manage roles within a tenant
 // ============================================
+
+/**
+ * Check if a user can assign the given permissions.
+ * Users can only assign permissions they themselves have.
+ * This prevents privilege escalation.
+ */
+function canAssignPermissions(
+  userPermissions: string[],
+  targetPermissions: string[]
+): boolean {
+  // Super wildcard holders can assign anything
+  if (userPermissions.includes("*")) return true;
+
+  // Check each target permission is held by the user
+  return targetPermissions.every((perm) =>
+    hasPermission(userPermissions, perm)
+  );
+}
 
 export const rolesRouter = router({
   /**
@@ -59,10 +78,19 @@ export const rolesRouter = router({
 
   /**
    * Create a custom role.
+   * SECURITY: Users can only assign permissions they hold (prevents escalation).
    */
   create: adminProcedure
     .input(createRoleSchema)
     .mutation(async ({ input, ctx }) => {
+      // Prevent privilege escalation: users cannot create roles with perms they don't have
+      if (!canAssignPermissions(ctx.membership.permissions, input.permissions)) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Cannot assign permissions you do not have",
+        });
+      }
+
       // Check slug uniqueness within tenant
       const [existing] = await db
         .select({ id: roles.id })
@@ -110,8 +138,8 @@ export const rolesRouter = router({
     }),
 
   /**
-   * Update a custom role's permissions.
-   * System roles can have permissions updated but not be deleted.
+   * Update a role.
+   * SECURITY: Cannot modify system role permissions. Cannot escalate privileges.
    */
   update: adminProcedure
     .input(updateRoleSchema)
@@ -128,12 +156,22 @@ export const rolesRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Role not found" });
       }
 
-      // Cannot rename system roles
-      if (existing.isSystem && input.name) {
+      // Cannot modify system roles at all (not name, not permissions)
+      if (existing.isSystem) {
         throw new TRPCError({
           code: "BAD_REQUEST",
-          message: "Cannot rename system roles",
+          message: "Cannot modify system roles",
         });
+      }
+
+      // Prevent privilege escalation when updating permissions
+      if (input.permissions) {
+        if (!canAssignPermissions(ctx.membership.permissions, input.permissions)) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Cannot assign permissions you do not have",
+          });
+        }
       }
 
       const updateData: Record<string, unknown> = {};

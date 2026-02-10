@@ -77,8 +77,8 @@ async function seed() {
     }
   }
 
-  // 3. Create admin user
-  console.log("\n👤 Creating admin user...");
+  // 3. Create admin user (marked as super admin)
+  console.log("\n👤 Creating admin user (super admin)...");
   const adminPassword = "admin123456";
   const passwordHash = await hashPassword(adminPassword);
 
@@ -89,6 +89,7 @@ async function seed() {
       passwordHash,
       fullName: "Admin User",
       emailVerified: true,
+      isSuperAdmin: true, // Platform owner
     })
     .onConflictDoNothing({ target: schema.users.email })
     .returning();
@@ -97,20 +98,22 @@ async function seed() {
     throw new Error("Failed to create admin user");
   }
 
-  console.log(`  ↳ Created user: ${adminUser.email}`);
+  console.log(`  ↳ Created user: ${adminUser.email} (super admin)`);
 
-  // 4. Assign admin user as tenant owner
+  // 4. Assign admin user as tenant owner — hash the PIN
   const ownerRoleId = roleMap.get("owner");
   if (!ownerRoleId) throw new Error("Owner role not found");
 
+  const adminPinHash = await hashPassword("1234");
   await db.insert(schema.tenantMemberships).values({
     tenantId: tenant.id,
     userId: adminUser.id,
     roleId: ownerRoleId,
-    pinCode: "1234",
+    pinHash: adminPinHash, // Hashed PIN, not plaintext
+    pinCode: null, // No plaintext storage
   });
 
-  console.log("  ↳ Assigned as tenant owner");
+  console.log("  ↳ Assigned as tenant owner (PIN hashed)");
 
   // 5. Create a second test user (operator)
   console.log("\n👤 Creating test operator...");
@@ -129,13 +132,15 @@ async function seed() {
   if (operatorUser) {
     const operatorRoleId = roleMap.get("operator");
     if (operatorRoleId) {
+      const operatorPinHash = await hashPassword("5678");
       await db.insert(schema.tenantMemberships).values({
         tenantId: tenant.id,
         userId: operatorUser.id,
         roleId: operatorRoleId,
-        pinCode: "5678",
+        pinHash: operatorPinHash, // Hashed PIN
+        pinCode: null,
       });
-      console.log(`  ↳ Created user: ${operatorUser.email} (operator role)`);
+      console.log(`  ↳ Created user: ${operatorUser.email} (operator role, PIN hashed)`);
     }
   }
 
@@ -167,9 +172,9 @@ async function seed() {
   console.log("\n" + "=".repeat(50));
   console.log("✅ Seed complete!\n");
   console.log("Login credentials:");
-  console.log(`  Admin:    admin@demo.com / ${adminPassword}`);
+  console.log(`  Admin:    admin@demo.com / ${adminPassword} (super admin)`);
   console.log(`  Operator: operator@demo.com / operator123`);
-  console.log(`  PIN:      admin=1234, operator=5678`);
+  console.log(`  PIN:      admin=1234, operator=5678 (hashed in DB)`);
   console.log(`\nTenant:     Demo Company (slug: demo)`);
   console.log("=".repeat(50));
 

@@ -20,6 +20,12 @@ import {
 } from "@sme/shared";
 
 // ============================================
+// PIN Rate Limiting Constants
+// ============================================
+const MAX_PIN_ATTEMPTS = 5;
+const PIN_LOCKOUT_DURATION_MS = 15 * 60 * 1000; // 15 minutes
+
+// ============================================
 // Auth Router — login, register, logout, session
 // ============================================
 
@@ -137,24 +143,28 @@ export const authRouter = router({
           fullName: user.fullName,
         },
         tenantId,
-        hasMulipleTenants: memberships.length > 1,
+        hasMultipleTenants: memberships.length > 1, // Fixed typo: was hasMulipleTenants
         expiresAt,
       };
     }),
 
   /**
    * PIN-based quick login (for POS/kiosk workflows).
+   * SECURITY: PINs are now hashed. Rate limited: 5 attempts per 15 min.
    */
   pinLogin: publicProcedure
     .input(pinLoginSchema)
     .mutation(async ({ input, ctx }) => {
-      // Find membership with matching PIN
+      // Find membership
       const [membership] = await db
         .select({
           membershipId: tenantMemberships.id,
           userId: tenantMemberships.userId,
           tenantId: tenantMemberships.tenantId,
           pinCode: tenantMemberships.pinCode,
+          pinHash: tenantMemberships.pinHash,
+          pinFailedAttempts: tenantMemberships.pinFailedAttempts,
+          pinLockedUntil: tenantMemberships.pinLockedUntil,
           isActive: tenantMemberships.isActive,
         })
         .from(tenantMemberships)
@@ -166,19 +176,82 @@ export const authRouter = router({
         )
         .limit(1);
 
-      if (!membership || !membership.isActive || !membership.pinCode) {
+      if (!membership || !membership.isActive) {
         throw new TRPCError({
           code: "UNAUTHORIZED",
           message: "Invalid PIN",
         });
       }
 
-      if (membership.pinCode !== input.pin) {
+      // Check lockout
+      if (
+        membership.pinLockedUntil &&
+        new Date() < new Date(membership.pinLockedUntil)
+      ) {
+        throw new TRPCError({
+          code: "TOO_MANY_REQUESTS",
+          message: "Too many failed PIN attempts. Please try again later.",
+        });
+      }
+
+      // Determine which PIN field to check (support migration from plaintext to hashed)
+      const hasPinHash = !!membership.pinHash;
+      const hasLegacyPin = !!membership.pinCode;
+
+      if (!hasPinHash && !hasLegacyPin) {
         throw new TRPCError({
           code: "UNAUTHORIZED",
           message: "Invalid PIN",
         });
       }
+
+      let pinValid = false;
+      if (hasPinHash) {
+        // Verify against hashed PIN
+        pinValid = await verifyPassword(input.pin, membership.pinHash!);
+      } else if (hasLegacyPin) {
+        // Legacy plaintext comparison (for un-migrated PINs)
+        pinValid = membership.pinCode === input.pin;
+        // If valid, upgrade to hashed PIN
+        if (pinValid) {
+          const newPinHash = await hashPassword(input.pin);
+          await db
+            .update(tenantMemberships)
+            .set({ pinHash: newPinHash, pinCode: null })
+            .where(eq(tenantMemberships.id, membership.membershipId));
+        }
+      }
+
+      if (!pinValid) {
+        // Increment failed attempts
+        const newAttempts = (membership.pinFailedAttempts ?? 0) + 1;
+        const updateData: Record<string, unknown> = {
+          pinFailedAttempts: newAttempts,
+        };
+
+        // Lock out after MAX_PIN_ATTEMPTS failures
+        if (newAttempts >= MAX_PIN_ATTEMPTS) {
+          updateData.pinLockedUntil = new Date(
+            Date.now() + PIN_LOCKOUT_DURATION_MS
+          );
+        }
+
+        await db
+          .update(tenantMemberships)
+          .set(updateData)
+          .where(eq(tenantMemberships.id, membership.membershipId));
+
+        throw new TRPCError({
+          code: "UNAUTHORIZED",
+          message: "Invalid PIN",
+        });
+      }
+
+      // Reset failed attempts on successful login
+      await db
+        .update(tenantMemberships)
+        .set({ pinFailedAttempts: 0, pinLockedUntil: null })
+        .where(eq(tenantMemberships.id, membership.membershipId));
 
       // Check user is active
       const [user] = await db

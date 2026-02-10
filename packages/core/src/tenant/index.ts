@@ -1,5 +1,6 @@
 import { db } from "../db/index";
-import { sql } from "drizzle-orm";
+import { tenants } from "../db/schema/tenants";
+import { sql, eq } from "drizzle-orm";
 
 // ============================================
 // Multi-Tenant Helpers
@@ -39,4 +40,20 @@ export async function setTenantContext(
   await tx.execute(
     sql`SELECT set_config('app.current_tenant_id', ${tenantId}, true)`
   );
+}
+
+/**
+ * Get a tenant's slug by ID.
+ * Used by the dashboard layout to validate URL slug matches session tenant.
+ */
+export async function getTenantSlugById(
+  tenantId: string
+): Promise<string | null> {
+  const [result] = await db
+    .select({ slug: tenants.slug })
+    .from(tenants)
+    .where(eq(tenants.id, tenantId))
+    .limit(1);
+
+  return result?.slug ?? null;
 }

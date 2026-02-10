@@ -23,6 +23,13 @@ import {
 import { paginatedResult } from "@sme/shared";
 
 // ============================================
+// Helper: Escape LIKE special characters
+// ============================================
+function escapeLike(s: string): string {
+  return s.replace(/[%_\\]/g, "\\$&");
+}
+
+// ============================================
 // Users Router — manage users within a tenant
 // ============================================
 
@@ -58,7 +65,7 @@ export const usersRouter = router({
           and(
             eq(tenantMemberships.tenantId, ctx.tenantId),
             input.search
-              ? ilike(users.fullName, `%${input.search}%`)
+              ? ilike(users.fullName, `%${escapeLike(input.search)}%`)
               : undefined,
             input.cursor
               ? gt(tenantMemberships.id, input.cursor)
@@ -75,6 +82,7 @@ export const usersRouter = router({
   /**
    * Invite a user to the tenant.
    * Creates the user if they don't exist, then adds membership.
+   * SECURITY: PINs are hashed before storage. Role assignment checked for escalation.
    */
   invite: adminProcedure
     .input(inviteUserSchema)
@@ -95,6 +103,14 @@ export const usersRouter = router({
         throw new TRPCError({
           code: "NOT_FOUND",
           message: "Role not found in this tenant",
+        });
+      }
+
+      // Prevent assigning owner role unless caller is also an owner or super admin
+      if (role.slug === "owner" && ctx.membership.roleSlug !== "owner" && !ctx.session.user.isSuperAdmin) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "Only owners can assign the owner role",
         });
       }
 
@@ -147,14 +163,18 @@ export const usersRouter = router({
         });
       }
 
-      // Create membership
+      // Hash PIN before storage if provided
+      const pinHash = input.pin ? await hashPassword(input.pin) : null;
+
+      // Create membership — store hashed PIN, not plaintext
       const [membership] = await db
         .insert(tenantMemberships)
         .values({
           tenantId: ctx.tenantId,
           userId: user.id,
           roleId: input.roleId,
-          pinCode: input.pin ?? null,
+          pinHash,
+          pinCode: null, // Never store plaintext PINs
         })
         .returning();
 
@@ -187,6 +207,8 @@ export const usersRouter = router({
 
   /**
    * Update a membership (change role, PIN, active status).
+   * SECURITY: Owner role cannot be assigned/removed except by owner or super admin.
+   * PINs are hashed before storage.
    */
   updateMembership: adminProcedure
     .input(updateMembershipSchema)
@@ -210,23 +232,23 @@ export const usersRouter = router({
         });
       }
 
-      // Prevent deactivating the owner
-      if (input.isActive === false) {
-        const [currentRole] = await db
-          .select({ slug: roles.slug })
-          .from(roles)
-          .where(eq(roles.id, membership.roleId))
-          .limit(1);
+      // Get current role
+      const [currentRole] = await db
+        .select({ slug: roles.slug })
+        .from(roles)
+        .where(eq(roles.id, membership.roleId))
+        .limit(1);
 
-        if (currentRole?.slug === "owner") {
-          throw new TRPCError({
-            code: "BAD_REQUEST",
-            message: "Cannot deactivate the owner",
-          });
-        }
+      // Prevent deactivating the owner
+      if (input.isActive === false && currentRole?.slug === "owner") {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "Cannot deactivate the owner",
+        });
       }
 
       const updateData: Record<string, unknown> = {};
+
       if (input.roleId !== undefined) {
         // Verify the new role belongs to this tenant
         const [newRole] = await db
@@ -247,9 +269,38 @@ export const usersRouter = router({
           });
         }
 
+        // Prevent assigning owner role unless caller is owner or super admin
+        if (newRole.slug === "owner" && ctx.membership.roleSlug !== "owner" && !ctx.session.user.isSuperAdmin) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Only owners can assign the owner role",
+          });
+        }
+
+        // Prevent removing owner role unless caller is owner or super admin
+        if (currentRole?.slug === "owner" && newRole.slug !== "owner") {
+          if (ctx.membership.roleSlug !== "owner" && !ctx.session.user.isSuperAdmin) {
+            throw new TRPCError({
+              code: "FORBIDDEN",
+              message: "Only owners can change the owner role",
+            });
+          }
+        }
+
         updateData.roleId = input.roleId;
       }
-      if (input.pin !== undefined) updateData.pinCode = input.pin;
+
+      // Hash PIN before storage
+      if (input.pin !== undefined) {
+        if (input.pin === null) {
+          updateData.pinHash = null;
+          updateData.pinCode = null;
+        } else {
+          updateData.pinHash = await hashPassword(input.pin);
+          updateData.pinCode = null; // Clear any legacy plaintext PIN
+        }
+      }
+
       if (input.isActive !== undefined) updateData.isActive = input.isActive;
 
       const [updated] = await db
@@ -258,14 +309,17 @@ export const usersRouter = router({
         .where(eq(tenantMemberships.id, input.membershipId))
         .returning();
 
-      // Audit
+      // Audit — don't log the actual PIN hash
+      const auditChanges = { ...updateData };
+      if (auditChanges.pinHash) auditChanges.pinHash = "[REDACTED]";
+
       await createAuditLog({
         tenantId: ctx.tenantId,
         userId: ctx.session.user.id,
         action: "user:membership_updated",
         resourceType: "membership",
         resourceId: input.membershipId,
-        changes: { after: updateData },
+        changes: { after: auditChanges },
         ipAddress: ctx.ipAddress,
       });
 

@@ -5,6 +5,7 @@ import {
   text,
   boolean,
   timestamp,
+  integer,
   index,
 } from "drizzle-orm/pg-core";
 
@@ -20,6 +21,7 @@ export const users = pgTable(
     passwordHash: text("password_hash").notNull(),
     fullName: varchar("full_name", { length: 200 }).notNull(),
     avatarUrl: text("avatar_url"),
+    isSuperAdmin: boolean("is_super_admin").default(false).notNull(),
     isActive: boolean("is_active").default(true).notNull(),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()

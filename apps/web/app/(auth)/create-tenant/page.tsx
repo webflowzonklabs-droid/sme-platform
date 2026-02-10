@@ -14,7 +14,6 @@ import {
   Label,
 } from "@sme/ui";
 import { trpc } from "@/trpc/client";
-import { setSessionCookie } from "@/lib/auth";
 import { slugify } from "@sme/shared";
 
 export default function CreateTenantPage() {
@@ -27,8 +26,8 @@ export default function CreateTenantPage() {
 
   const createTenant = trpc.tenants.create.useMutation({
     onSuccess: async (data) => {
-      await setSessionCookie(data.token);
-      window.location.href = `/${data.tenant.slug}`;
+      // Tenant created — switch to it
+      window.location.href = `/select-tenant`;
     },
     onError: (err) => {
       setError(err.message);
@@ -60,7 +59,7 @@ export default function CreateTenantPage() {
           Create Organization
         </CardTitle>
         <CardDescription className="text-center">
-          Set up your business on the platform
+          Set up a new business on the platform (admin only)
         </CardDescription>
       </CardHeader>
       <form onSubmit={handleSubmit}>

@@ -54,11 +54,11 @@ export const paginationSchema = z.object({
 /** Sort direction */
 export const sortDirectionSchema = z.enum(["asc", "desc"]);
 
-/** Permission string format: module:resource:action or wildcard */
+/** Permission string format: module:resource:action or wildcard (allows hyphens and numbers) */
 export const permissionSchema = z
   .string()
   .regex(
-    /^(\*|[a-z]+:\*|[a-z]+:[a-z]+:\*|[a-z]+:[a-z]+:[a-z]+)$/,
+    /^(\*|[a-z][a-z0-9-]*:\*|[a-z][a-z0-9-]*:[a-z][a-z0-9-]*:\*|[a-z][a-z0-9-]*:[a-z][a-z0-9-]*:[a-z][a-z0-9-]*)$/,
     "Permission must be in format module:resource:action (wildcards allowed)"
   );
 
@@ -93,11 +93,14 @@ export const createTenantSchema = z.object({
   settings: z.record(z.unknown()).optional(),
 });
 
+/**
+ * Update tenant schema.
+ * SECURITY: No `id` field — always use session's tenant ID to prevent cross-tenant modification.
+ * `isActive` is removed — only super admins can deactivate tenants via admin router.
+ */
 export const updateTenantSchema = z.object({
-  id: uuidSchema,
   name: tenantNameSchema.optional(),
   settings: z.record(z.unknown()).optional(),
-  isActive: z.boolean().optional(),
 });
 
 // ============================================

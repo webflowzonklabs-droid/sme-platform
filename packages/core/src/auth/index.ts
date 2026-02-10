@@ -4,5 +4,6 @@ export {
   validateSession,
   invalidateSession,
   invalidateAllUserSessions,
+  cleanupExpiredSessions,
   type SessionValidationResult,
 } from "./session";

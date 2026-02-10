@@ -2,8 +2,10 @@ import {
   pgTable,
   uuid,
   varchar,
+  text,
   boolean,
   timestamp,
+  integer,
   index,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
@@ -28,6 +30,9 @@ export const tenantMemberships = pgTable(
       .notNull()
       .references(() => roles.id),
     pinCode: varchar("pin_code", { length: 10 }),
+    pinHash: text("pin_hash"),
+    pinFailedAttempts: integer("pin_failed_attempts").default(0).notNull(),
+    pinLockedUntil: timestamp("pin_locked_until", { withTimezone: true }),
     isActive: boolean("is_active").default(true).notNull(),
     joinedAt: timestamp("joined_at", { withTimezone: true })
       .defaultNow()

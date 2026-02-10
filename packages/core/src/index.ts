@@ -14,6 +14,7 @@ export {
   validateSession,
   invalidateSession,
   invalidateAllUserSessions,
+  cleanupExpiredSessions,
 } from "./auth/index";
 export type { SessionValidationResult } from "./auth/index";
 
@@ -26,7 +27,7 @@ export {
 } from "./rbac/index";
 
 // Tenant
-export { withTenant, setTenantContext } from "./tenant/index";
+export { withTenant, setTenantContext, getTenantSlugById } from "./tenant/index";
 
 // Modules
 export {
@@ -55,7 +56,10 @@ export {
   protectedProcedure,
   tenantProcedure,
   adminProcedure,
+  superAdminProcedure,
   createCallerFactory,
+  requirePermission,
+  requireModule,
   appRouter,
 } from "./trpc/index";
 export type { Context, AppRouter } from "./trpc/index";

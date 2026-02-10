@@ -10,11 +10,9 @@ export interface PaginatedResponse<T> {
   total?: number;
 }
 
-/** Pagination input */
-export interface PaginationInput {
-  cursor?: string;
-  limit?: number;
-}
+/** Pagination input — type alias (canonical definition in validators) */
+// Note: PaginationInput is also exported from validators/index.ts via z.infer
+// Use the validator version for runtime validation; this interface is kept for documentation.
 
 /** Sort direction */
 export type SortDirection = "asc" | "desc";

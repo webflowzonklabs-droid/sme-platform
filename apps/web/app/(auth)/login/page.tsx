@@ -30,7 +30,7 @@ export default function LoginPage() {
       if (data.tenantId) {
         // User has exactly one tenant — go to dashboard
         router.push("/select-tenant");
-      } else if (data.hasMulipleTenants) {
+      } else if (data.hasMultipleTenants) {
         // Multiple tenants — show selector
         router.push("/select-tenant");
       } else {

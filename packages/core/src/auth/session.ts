@@ -2,7 +2,8 @@ import { eq, and, gt } from "drizzle-orm";
 import { db } from "../db/index";
 import { sessions, users, tenantMemberships, roles } from "../db/schema/index";
 import { generateToken, hashToken } from "@sme/shared";
-import type { AuthMethod, SessionContext } from "@sme/shared";
+import type { AuthMethod } from "@sme/shared";
+import crypto from "crypto";
 
 // ============================================
 // Session Management — database-backed sessions
@@ -24,6 +25,7 @@ export interface SessionValidationResult {
     email: string;
     fullName: string;
     avatarUrl: string | null;
+    isSuperAdmin: boolean;
   };
   membership?: {
     id: string;
@@ -32,6 +34,14 @@ export interface SessionValidationResult {
     roleSlug: string;
     permissions: string[];
   };
+}
+
+/**
+ * Generate a cryptographically secure session token.
+ * Uses crypto.randomBytes(32) for 256-bit entropy (not UUID).
+ */
+function generateSecureToken(): string {
+  return crypto.randomBytes(32).toString("hex");
 }
 
 /**
@@ -45,7 +55,8 @@ export async function createSession(params: {
   ipAddress?: string;
   userAgent?: string;
 }): Promise<{ token: string; sessionId: string; expiresAt: Date }> {
-  const token = generateToken(32);
+  // Use crypto.randomBytes for session tokens (not UUID)
+  const token = generateSecureToken();
   const tokenHash = await hashToken(token);
 
   const duration =
@@ -97,6 +108,7 @@ export async function validateSession(
       userFullName: users.fullName,
       userAvatarUrl: users.avatarUrl,
       userIsActive: users.isActive,
+      userIsSuperAdmin: users.isSuperAdmin,
     })
     .from(sessions)
     .innerJoin(users, eq(sessions.userId, users.id))
@@ -124,6 +136,7 @@ export async function validateSession(
       email: row.userEmail,
       fullName: row.userFullName,
       avatarUrl: row.userAvatarUrl,
+      isSuperAdmin: row.userIsSuperAdmin,
     },
   };
 
@@ -190,4 +203,17 @@ export async function updateSessionTenant(
     .update(sessions)
     .set({ tenantId })
     .where(eq(sessions.id, sessionId));
+}
+
+/**
+ * Clean up expired sessions.
+ * Should be called periodically (cron, scheduled job).
+ */
+export async function cleanupExpiredSessions(): Promise<number> {
+  const { sql } = await import("drizzle-orm");
+  const result = await db
+    .delete(sessions)
+    .where(sql`${sessions.expiresAt} < NOW()`)
+    .returning({ id: sessions.id });
+  return result.length;
 }

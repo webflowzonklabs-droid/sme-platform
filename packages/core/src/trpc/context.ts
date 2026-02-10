@@ -11,6 +11,8 @@ export interface Context {
   ipAddress?: string;
   /** Client user agent */
   userAgent?: string;
+  /** X-TRPC-Source header for CSRF protection */
+  trpcSource?: string;
 }
 
 /**
@@ -21,10 +23,12 @@ export function createContext(params: {
   session: SessionValidationResult | null;
   ipAddress?: string;
   userAgent?: string;
+  trpcSource?: string;
 }): Context {
   return {
     session: params.session,
     ipAddress: params.ipAddress,
     userAgent: params.userAgent,
+    trpcSource: params.trpcSource,
   };
 }

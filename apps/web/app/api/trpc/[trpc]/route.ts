@@ -28,7 +28,10 @@ const handler = async (req: Request) => {
         undefined;
       const userAgent = req.headers.get("user-agent") ?? undefined;
 
-      return createContext({ session, ipAddress, userAgent });
+      // Extract CSRF/source header for CSRF protection
+      const trpcSource = req.headers.get("x-trpc-source") ?? undefined;
+
+      return createContext({ session, ipAddress, userAgent, trpcSource });
     },
     onError({ error, path }) {
       console.error(`❌ tRPC error on '${path}':`, error.message);

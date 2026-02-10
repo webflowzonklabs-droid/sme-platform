@@ -2,21 +2,32 @@ import { TRPCError } from "@trpc/server";
 import { eq, and, isNull, gt, desc, ilike } from "drizzle-orm";
 import { z } from "zod";
 import { router, tenantProcedure } from "../../trpc/procedures";
-import { requirePermission } from "../../trpc/procedures";
+import { requirePermission, requireModule } from "../../trpc/procedures";
 import { db } from "../../db/index";
 import { notes } from "./schema";
 import { createAuditLog } from "../../audit/index";
 import { paginationSchema, paginatedResult } from "@sme/shared";
 
 // ============================================
-// Notes Router — example module CRUD
+// Helper: Escape LIKE special characters
 // ============================================
+function escapeLike(s: string): string {
+  return s.replace(/[%_\\]/g, "\\$&");
+}
+
+// ============================================
+// Notes Router — example module CRUD
+// Module enforcement: all routes require "notes" module to be enabled
+// ============================================
+
+// Base procedure for notes — requires module to be enabled
+const notesProcedure = tenantProcedure.use(requireModule("notes"));
 
 export const notesRouter = router({
   /**
    * List notes for the current tenant.
    */
-  list: tenantProcedure
+  list: notesProcedure
     .use(requirePermission("notes:notes:read"))
     .input(
       paginationSchema.extend({
@@ -24,15 +35,16 @@ export const notesRouter = router({
       })
     )
     .query(async ({ input, ctx }) => {
+      const tenantId = ctx.session!.session.tenantId!;
       const items = await db
         .select()
         .from(notes)
         .where(
           and(
-            eq(notes.tenantId, ctx.tenantId),
+            eq(notes.tenantId, tenantId),
             isNull(notes.deletedAt),
             input.search
-              ? ilike(notes.title, `%${input.search}%`)
+              ? ilike(notes.title, `%${escapeLike(input.search)}%`)
               : undefined,
             input.cursor ? gt(notes.id, input.cursor) : undefined
           )
@@ -46,17 +58,18 @@ export const notesRouter = router({
   /**
    * Get a single note.
    */
-  get: tenantProcedure
+  get: notesProcedure
     .use(requirePermission("notes:notes:read"))
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ input, ctx }) => {
+      const tenantId = ctx.session!.session.tenantId!;
       const [note] = await db
         .select()
         .from(notes)
         .where(
           and(
             eq(notes.id, input.id),
-            eq(notes.tenantId, ctx.tenantId),
+            eq(notes.tenantId, tenantId),
             isNull(notes.deletedAt)
           )
         )
@@ -72,7 +85,7 @@ export const notesRouter = router({
   /**
    * Create a new note.
    */
-  create: tenantProcedure
+  create: notesProcedure
     .use(requirePermission("notes:notes:write"))
     .input(
       z.object({
@@ -81,11 +94,13 @@ export const notesRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
+      const tenantId = ctx.session!.session.tenantId!;
+      const userId = ctx.session!.user.id;
       const [note] = await db
         .insert(notes)
         .values({
-          tenantId: ctx.tenantId,
-          userId: ctx.session.user.id,
+          tenantId,
+          userId,
           title: input.title,
           content: input.content ?? "",
         })
@@ -99,12 +114,13 @@ export const notesRouter = router({
       }
 
       await createAuditLog({
-        tenantId: ctx.tenantId,
-        userId: ctx.session.user.id,
+        tenantId,
+        userId,
         action: "notes:note:created",
         resourceType: "note",
         resourceId: note.id,
         changes: { after: { title: input.title } },
+        ipAddress: ctx.ipAddress,
       });
 
       return note;
@@ -113,7 +129,7 @@ export const notesRouter = router({
   /**
    * Update a note.
    */
-  update: tenantProcedure
+  update: notesProcedure
     .use(requirePermission("notes:notes:write"))
     .input(
       z.object({
@@ -123,9 +139,10 @@ export const notesRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
-      const updateData: Record<string, unknown> = {
-        updatedAt: new Date(),
-      };
+      const tenantId = ctx.session!.session.tenantId!;
+      const userId = ctx.session!.user.id;
+
+      const updateData: Record<string, unknown> = {};
       if (input.title !== undefined) updateData.title = input.title;
       if (input.content !== undefined) updateData.content = input.content;
 
@@ -135,7 +152,7 @@ export const notesRouter = router({
         .where(
           and(
             eq(notes.id, input.id),
-            eq(notes.tenantId, ctx.tenantId),
+            eq(notes.tenantId, tenantId),
             isNull(notes.deletedAt)
           )
         )
@@ -146,12 +163,13 @@ export const notesRouter = router({
       }
 
       await createAuditLog({
-        tenantId: ctx.tenantId,
-        userId: ctx.session.user.id,
+        tenantId,
+        userId,
         action: "notes:note:updated",
         resourceType: "note",
         resourceId: input.id,
         changes: { after: updateData },
+        ipAddress: ctx.ipAddress,
       });
 
       return updated;
@@ -160,20 +178,23 @@ export const notesRouter = router({
   /**
    * Soft-delete a note.
    */
-  delete: tenantProcedure
+  delete: notesProcedure
     .use(requirePermission("notes:notes:delete"))
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ input, ctx }) => {
+      const tenantId = ctx.session!.session.tenantId!;
+      const userId = ctx.session!.user.id;
+
       const [deleted] = await db
         .update(notes)
         .set({
           deletedAt: new Date(),
-          deletedBy: ctx.session.user.id,
+          deletedBy: userId,
         })
         .where(
           and(
             eq(notes.id, input.id),
-            eq(notes.tenantId, ctx.tenantId),
+            eq(notes.tenantId, tenantId),
             isNull(notes.deletedAt)
           )
         )
@@ -184,11 +205,12 @@ export const notesRouter = router({
       }
 
       await createAuditLog({
-        tenantId: ctx.tenantId,
-        userId: ctx.session.user.id,
+        tenantId,
+        userId,
         action: "notes:note:deleted",
         resourceType: "note",
         resourceId: input.id,
+        ipAddress: ctx.ipAddress,
       });
 
       return { success: true };

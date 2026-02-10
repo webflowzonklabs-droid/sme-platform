@@ -6,6 +6,7 @@ import {
   protectedProcedure,
   tenantProcedure,
   adminProcedure,
+  superAdminProcedure,
 } from "../procedures";
 import { db } from "../../db/index";
 import {
@@ -17,7 +18,6 @@ import { createSession } from "../../auth/session";
 import { createAuditLog } from "../../audit/index";
 import {
   createTenantSchema,
-  updateTenantSchema,
   SYSTEM_ROLES,
   SYSTEM_ROLE_PERMISSIONS,
 } from "@sme/shared";
@@ -29,9 +29,9 @@ import {
 export const tenantsRouter = router({
   /**
    * Create a new tenant.
-   * The creating user becomes the owner.
+   * Only super admins can create tenants (platform-level operation).
    */
-  create: protectedProcedure
+  create: superAdminProcedure
     .input(createTenantSchema)
     .mutation(async ({ input, ctx }) => {
       // Check slug uniqueness
@@ -95,15 +95,6 @@ export const tenantsRouter = router({
         roleId: ownerRole.id,
       });
 
-      // Create a new session with the tenant context
-      const { token, expiresAt } = await createSession({
-        userId: ctx.session.user.id,
-        tenantId: tenant.id,
-        authMethod: ctx.session.session.authMethod as "password" | "pin" | "oauth",
-        ipAddress: ctx.ipAddress,
-        userAgent: ctx.userAgent,
-      });
-
       // Audit
       await createAuditLog({
         tenantId: tenant.id,
@@ -115,7 +106,7 @@ export const tenantsRouter = router({
         ipAddress: ctx.ipAddress,
       });
 
-      return { tenant, token, expiresAt };
+      return { tenant };
     }),
 
   /**
@@ -137,21 +128,33 @@ export const tenantsRouter = router({
 
   /**
    * Update tenant settings.
+   * SECURITY FIX: Always use ctx.tenantId instead of user-supplied ID.
+   * This prevents cross-tenant data modification (C4).
    */
   update: adminProcedure
-    .input(updateTenantSchema)
+    .input(
+      z.object({
+        name: z.string().min(1).max(200).trim().optional(),
+        settings: z.record(z.unknown()).optional(),
+      })
+    )
     .mutation(async ({ input, ctx }) => {
-      const updateData: Record<string, unknown> = {
-        updatedAt: new Date(),
-      };
+      const updateData: Record<string, unknown> = {};
       if (input.name !== undefined) updateData.name = input.name;
       if (input.settings !== undefined) updateData.settings = input.settings;
-      if (input.isActive !== undefined) updateData.isActive = input.isActive;
 
+      if (Object.keys(updateData).length === 0) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: "No fields to update",
+        });
+      }
+
+      // Always use session's tenant ID — never accept user-supplied tenant ID
       const [updated] = await db
         .update(tenants)
         .set(updateData)
-        .where(eq(tenants.id, input.id))
+        .where(eq(tenants.id, ctx.tenantId))
         .returning();
 
       if (!updated) {
@@ -162,11 +165,11 @@ export const tenantsRouter = router({
       }
 
       await createAuditLog({
-        tenantId: input.id,
+        tenantId: ctx.tenantId,
         userId: ctx.session.user.id,
         action: "tenant:updated",
         resourceType: "tenant",
-        resourceId: input.id,
+        resourceId: ctx.tenantId,
         changes: { after: updateData },
         ipAddress: ctx.ipAddress,
       });

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Card,
   CardContent,
@@ -27,10 +27,12 @@ export default function SettingsPage() {
     onError: () => setSaving(false),
   });
 
-  // Initialize form when data loads
-  if (tenant && !name) {
-    setName(tenant.name);
-  }
+  // FIX: Use useEffect instead of render-time state update (H9)
+  useEffect(() => {
+    if (tenant) {
+      setName(tenant.name);
+    }
+  }, [tenant?.name]);
 
   return (
     <div className="space-y-6">
@@ -70,35 +72,14 @@ export default function SettingsPage() {
             onClick={() => {
               if (!tenant) return;
               setSaving(true);
-              updateTenant.mutate({ id: tenant.id, name });
+              // SECURITY FIX: Don't pass tenant ID — server uses session's tenant ID
+              updateTenant.mutate({ name });
             }}
             disabled={saving || !tenant}
           >
             {saving ? "Saving..." : "Save Changes"}
           </Button>
         </CardFooter>
-      </Card>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Danger Zone</CardTitle>
-          <CardDescription>
-            Irreversible actions for your organization
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex items-center justify-between p-4 border border-destructive/20 rounded-lg">
-            <div>
-              <div className="font-medium">Deactivate Organization</div>
-              <div className="text-sm text-muted-foreground">
-                This will disable access for all members
-              </div>
-            </div>
-            <Button variant="destructive" size="sm" disabled>
-              Deactivate
-            </Button>
-          </div>
-        </CardContent>
       </Card>
     </div>
   );

@@ -3,6 +3,9 @@ import { appRouter, createContext } from "@sme/core/trpc";
 import { validateSession } from "@sme/core/auth";
 import { cookies } from "next/headers";
 
+// Import core to trigger module registration side effects
+import "@sme/core";
+
 const handler = async (req: Request) => {
   return fetchRequestHandler({
     endpoint: "/api/trpc",

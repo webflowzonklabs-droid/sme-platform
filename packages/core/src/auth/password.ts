@@ -1,20 +1,17 @@
-import argon2 from "argon2";
+import bcrypt from "bcryptjs";
 
 // ============================================
-// Password Hashing — argon2id
+// Password Hashing — bcryptjs (pure JS, no native deps)
+// Production upgrade path: switch to argon2 with proper native build
 // ============================================
+
+const SALT_ROUNDS = 12;
 
 /**
- * Hash a password using argon2id.
- * Uses recommended parameters for security.
+ * Hash a password using bcrypt.
  */
 export async function hashPassword(password: string): Promise<string> {
-  return argon2.hash(password, {
-    type: argon2.argon2id,
-    memoryCost: 65536, // 64MB
-    timeCost: 3,
-    parallelism: 4,
-  });
+  return bcrypt.hash(password, SALT_ROUNDS);
 }
 
 /**
@@ -22,12 +19,11 @@ export async function hashPassword(password: string): Promise<string> {
  */
 export async function verifyPassword(
   password: string,
-  hash: string
+  storedHash: string
 ): Promise<boolean> {
   try {
-    return await argon2.verify(hash, password);
+    return await bcrypt.compare(password, storedHash);
   } catch {
-    // If the hash is malformed, return false
     return false;
   }
 }

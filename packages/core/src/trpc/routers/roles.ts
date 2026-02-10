@@ -6,7 +6,6 @@ import {
   adminProcedure,
 } from "../procedures";
 import { requirePermission } from "../procedures";
-import { db } from "../../db/index";
 import { roles, tenantMemberships } from "../../db/schema/index";
 import { createAuditLog } from "../../audit/index";
 import {
@@ -18,6 +17,7 @@ import { z } from "zod";
 
 // ============================================
 // Roles Router — manage roles within a tenant
+// All queries use ctx.db (RLS-enforced transaction)
 // ============================================
 
 /**
@@ -29,10 +29,7 @@ function canAssignPermissions(
   userPermissions: string[],
   targetPermissions: string[]
 ): boolean {
-  // Super wildcard holders can assign anything
   if (userPermissions.includes("*")) return true;
-
-  // Check each target permission is held by the user
   return targetPermissions.every((perm) =>
     hasPermission(userPermissions, perm)
   );
@@ -45,7 +42,7 @@ export const rolesRouter = router({
   list: tenantProcedure
     .use(requirePermission("core:users:read"))
     .query(async ({ ctx }) => {
-      const result = await db
+      const result = await ctx.db
         .select()
         .from(roles)
         .where(eq(roles.tenantId, ctx.tenantId))
@@ -61,7 +58,7 @@ export const rolesRouter = router({
     .use(requirePermission("core:users:read"))
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ input, ctx }) => {
-      const [role] = await db
+      const [role] = await ctx.db
         .select()
         .from(roles)
         .where(
@@ -83,7 +80,6 @@ export const rolesRouter = router({
   create: adminProcedure
     .input(createRoleSchema)
     .mutation(async ({ input, ctx }) => {
-      // Prevent privilege escalation: users cannot create roles with perms they don't have
       if (!canAssignPermissions(ctx.membership.permissions, input.permissions)) {
         throw new TRPCError({
           code: "FORBIDDEN",
@@ -91,8 +87,7 @@ export const rolesRouter = router({
         });
       }
 
-      // Check slug uniqueness within tenant
-      const [existing] = await db
+      const [existing] = await ctx.db
         .select({ id: roles.id })
         .from(roles)
         .where(
@@ -110,7 +105,7 @@ export const rolesRouter = router({
         });
       }
 
-      const [role] = await db
+      const [role] = await ctx.db
         .insert(roles)
         .values({
           tenantId: ctx.tenantId,
@@ -122,17 +117,20 @@ export const rolesRouter = router({
         })
         .returning();
 
-      await createAuditLog({
-        tenantId: ctx.tenantId,
-        userId: ctx.session.user.id,
-        action: "role:created",
-        resourceType: "role",
-        resourceId: role!.id,
-        changes: {
-          after: { name: input.name, permissions: input.permissions },
+      await createAuditLog(
+        {
+          tenantId: ctx.tenantId,
+          userId: ctx.session.user.id,
+          action: "role:created",
+          resourceType: "role",
+          resourceId: role!.id,
+          changes: {
+            after: { name: input.name, permissions: input.permissions },
+          },
+          ipAddress: ctx.ipAddress,
         },
-        ipAddress: ctx.ipAddress,
-      });
+        ctx.db
+      );
 
       return role;
     }),
@@ -144,7 +142,7 @@ export const rolesRouter = router({
   update: adminProcedure
     .input(updateRoleSchema)
     .mutation(async ({ input, ctx }) => {
-      const [existing] = await db
+      const [existing] = await ctx.db
         .select()
         .from(roles)
         .where(
@@ -156,7 +154,6 @@ export const rolesRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Role not found" });
       }
 
-      // Cannot modify system roles at all (not name, not permissions)
       if (existing.isSystem) {
         throw new TRPCError({
           code: "BAD_REQUEST",
@@ -164,7 +161,6 @@ export const rolesRouter = router({
         });
       }
 
-      // Prevent privilege escalation when updating permissions
       if (input.permissions) {
         if (!canAssignPermissions(ctx.membership.permissions, input.permissions)) {
           throw new TRPCError({
@@ -179,33 +175,35 @@ export const rolesRouter = router({
       if (input.description !== undefined) updateData.description = input.description;
       if (input.permissions !== undefined) updateData.permissions = input.permissions;
 
-      const [updated] = await db
+      const [updated] = await ctx.db
         .update(roles)
         .set(updateData)
         .where(eq(roles.id, input.id))
         .returning();
 
-      await createAuditLog({
-        tenantId: ctx.tenantId,
-        userId: ctx.session.user.id,
-        action: "role:updated",
-        resourceType: "role",
-        resourceId: input.id,
-        changes: { before: { permissions: existing.permissions }, after: updateData },
-        ipAddress: ctx.ipAddress,
-      });
+      await createAuditLog(
+        {
+          tenantId: ctx.tenantId,
+          userId: ctx.session.user.id,
+          action: "role:updated",
+          resourceType: "role",
+          resourceId: input.id,
+          changes: { before: { permissions: existing.permissions }, after: updateData },
+          ipAddress: ctx.ipAddress,
+        },
+        ctx.db
+      );
 
       return updated;
     }),
 
   /**
    * Delete a custom role.
-   * Cannot delete system roles or roles that are assigned to users.
    */
   delete: adminProcedure
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ input, ctx }) => {
-      const [role] = await db
+      const [role] = await ctx.db
         .select()
         .from(roles)
         .where(
@@ -224,8 +222,7 @@ export const rolesRouter = router({
         });
       }
 
-      // Check if any users are assigned this role
-      const [assignment] = await db
+      const [assignment] = await ctx.db
         .select({ id: tenantMemberships.id })
         .from(tenantMemberships)
         .where(eq(tenantMemberships.roleId, input.id))
@@ -239,17 +236,20 @@ export const rolesRouter = router({
         });
       }
 
-      await db.delete(roles).where(eq(roles.id, input.id));
+      await ctx.db.delete(roles).where(eq(roles.id, input.id));
 
-      await createAuditLog({
-        tenantId: ctx.tenantId,
-        userId: ctx.session.user.id,
-        action: "role:deleted",
-        resourceType: "role",
-        resourceId: input.id,
-        changes: { before: { name: role.name } },
-        ipAddress: ctx.ipAddress,
-      });
+      await createAuditLog(
+        {
+          tenantId: ctx.tenantId,
+          userId: ctx.session.user.id,
+          action: "role:deleted",
+          resourceType: "role",
+          resourceId: input.id,
+          changes: { before: { name: role.name } },
+          ipAddress: ctx.ipAddress,
+        },
+        ctx.db
+      );
 
       return { success: true };
     }),

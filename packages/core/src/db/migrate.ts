@@ -2,10 +2,22 @@ import { drizzle } from "drizzle-orm/postgres-js";
 import { migrate } from "drizzle-orm/postgres-js/migrator";
 import postgres from "postgres";
 
+// ============================================
+// Migration Runner
+//
+// Uses DATABASE_ADMIN_URL (superuser) because migrations need to:
+// 1. CREATE/ALTER tables (DDL operations)
+// 2. CREATE/ALTER RLS policies
+// 3. GRANT privileges
+// These require superuser or table owner permissions.
+// ============================================
+
 async function runMigrations() {
-  const connectionString = process.env.DATABASE_URL;
+  // Use admin connection for migrations (superuser for DDL)
+  const connectionString =
+    process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
   if (!connectionString) {
-    throw new Error("DATABASE_URL environment variable is required");
+    throw new Error("DATABASE_ADMIN_URL or DATABASE_URL environment variable is required");
   }
 
   console.log("🔄 Running migrations...");

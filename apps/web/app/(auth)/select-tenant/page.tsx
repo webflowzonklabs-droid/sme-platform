@@ -13,7 +13,6 @@ import {
 } from "@sme/ui";
 import { Building2, Plus } from "lucide-react";
 import { trpc } from "@/trpc/client";
-import { setSessionCookie } from "@/lib/auth";
 
 export default function SelectTenantPage() {
   const router = useRouter();

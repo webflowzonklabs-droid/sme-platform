@@ -3,7 +3,7 @@
 // ============================================
 
 // Database
-export { db, schema } from "./db/index";
+export { db, adminDb, schema } from "./db/index";
 export type { Database } from "./db/index";
 
 // Auth
@@ -15,8 +15,17 @@ export {
   invalidateSession,
   invalidateAllUserSessions,
   cleanupExpiredSessions,
+  loginWithPassword,
+  registerUser,
+  registerUserWithTenant,
+  AuthError,
 } from "./auth/index";
-export type { SessionValidationResult } from "./auth/index";
+export type {
+  SessionValidationResult,
+  LoginResult,
+  RegisterResult,
+  RegisterWithTenantResult,
+} from "./auth/index";
 
 // RBAC
 export {

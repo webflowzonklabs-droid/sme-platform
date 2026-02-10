@@ -7,7 +7,6 @@ import {
   adminProcedure,
 } from "../procedures";
 import { requirePermission } from "../procedures";
-import { db } from "../../db/index";
 import {
   users,
   tenantMemberships,
@@ -31,6 +30,7 @@ function escapeLike(s: string): string {
 
 // ============================================
 // Users Router — manage users within a tenant
+// All queries use ctx.db (RLS-enforced transaction)
 // ============================================
 
 export const usersRouter = router({
@@ -45,7 +45,7 @@ export const usersRouter = router({
       })
     )
     .query(async ({ input, ctx }) => {
-      const query = db
+      const query = ctx.db
         .select({
           id: tenantMemberships.id,
           userId: users.id,
@@ -88,7 +88,7 @@ export const usersRouter = router({
     .input(inviteUserSchema)
     .mutation(async ({ input, ctx }) => {
       // Verify the role exists and belongs to this tenant
-      const [role] = await db
+      const [role] = await ctx.db
         .select()
         .from(roles)
         .where(
@@ -114,20 +114,19 @@ export const usersRouter = router({
         });
       }
 
-      // Find or create the user
-      let [user] = await db
+      // Find or create the user (users table has no RLS, so this works in the tx)
+      let [user] = await ctx.db
         .select()
         .from(users)
         .where(eq(users.email, input.email))
         .limit(1);
 
       if (!user) {
-        // Create user with a temporary password (they'll need to set their own)
         const tempPasswordHash = await hashPassword(
           crypto.randomUUID()
         );
 
-        [user] = await db
+        [user] = await ctx.db
           .insert(users)
           .values({
             email: input.email,
@@ -145,7 +144,7 @@ export const usersRouter = router({
       }
 
       // Check if already a member
-      const [existingMembership] = await db
+      const [existingMembership] = await ctx.db
         .select()
         .from(tenantMemberships)
         .where(
@@ -167,33 +166,36 @@ export const usersRouter = router({
       const pinHash = input.pin ? await hashPassword(input.pin) : null;
 
       // Create membership — store hashed PIN, not plaintext
-      const [membership] = await db
+      const [membership] = await ctx.db
         .insert(tenantMemberships)
         .values({
           tenantId: ctx.tenantId,
           userId: user.id,
           roleId: input.roleId,
           pinHash,
-          pinCode: null, // Never store plaintext PINs
+          pinCode: null,
         })
         .returning();
 
       // Audit
-      await createAuditLog({
-        tenantId: ctx.tenantId,
-        userId: ctx.session.user.id,
-        action: "user:invited",
-        resourceType: "user",
-        resourceId: user.id,
-        changes: {
-          after: {
-            email: input.email,
-            roleId: input.roleId,
-            roleName: role.name,
+      await createAuditLog(
+        {
+          tenantId: ctx.tenantId,
+          userId: ctx.session.user.id,
+          action: "user:invited",
+          resourceType: "user",
+          resourceId: user.id,
+          changes: {
+            after: {
+              email: input.email,
+              roleId: input.roleId,
+              roleName: role.name,
+            },
           },
+          ipAddress: ctx.ipAddress,
         },
-        ipAddress: ctx.ipAddress,
-      });
+        ctx.db
+      );
 
       return {
         membership,
@@ -214,7 +216,7 @@ export const usersRouter = router({
     .input(updateMembershipSchema)
     .mutation(async ({ input, ctx }) => {
       // Verify membership belongs to this tenant
-      const [membership] = await db
+      const [membership] = await ctx.db
         .select()
         .from(tenantMemberships)
         .where(
@@ -233,7 +235,7 @@ export const usersRouter = router({
       }
 
       // Get current role
-      const [currentRole] = await db
+      const [currentRole] = await ctx.db
         .select({ slug: roles.slug })
         .from(roles)
         .where(eq(roles.id, membership.roleId))
@@ -250,8 +252,7 @@ export const usersRouter = router({
       const updateData: Record<string, unknown> = {};
 
       if (input.roleId !== undefined) {
-        // Verify the new role belongs to this tenant
-        const [newRole] = await db
+        const [newRole] = await ctx.db
           .select()
           .from(roles)
           .where(
@@ -269,7 +270,6 @@ export const usersRouter = router({
           });
         }
 
-        // Prevent assigning owner role unless caller is owner or super admin
         if (newRole.slug === "owner" && ctx.membership.roleSlug !== "owner" && !ctx.session.user.isSuperAdmin) {
           throw new TRPCError({
             code: "FORBIDDEN",
@@ -277,7 +277,6 @@ export const usersRouter = router({
           });
         }
 
-        // Prevent removing owner role unless caller is owner or super admin
         if (currentRole?.slug === "owner" && newRole.slug !== "owner") {
           if (ctx.membership.roleSlug !== "owner" && !ctx.session.user.isSuperAdmin) {
             throw new TRPCError({
@@ -297,13 +296,13 @@ export const usersRouter = router({
           updateData.pinCode = null;
         } else {
           updateData.pinHash = await hashPassword(input.pin);
-          updateData.pinCode = null; // Clear any legacy plaintext PIN
+          updateData.pinCode = null;
         }
       }
 
       if (input.isActive !== undefined) updateData.isActive = input.isActive;
 
-      const [updated] = await db
+      const [updated] = await ctx.db
         .update(tenantMemberships)
         .set(updateData)
         .where(eq(tenantMemberships.id, input.membershipId))
@@ -313,15 +312,18 @@ export const usersRouter = router({
       const auditChanges = { ...updateData };
       if (auditChanges.pinHash) auditChanges.pinHash = "[REDACTED]";
 
-      await createAuditLog({
-        tenantId: ctx.tenantId,
-        userId: ctx.session.user.id,
-        action: "user:membership_updated",
-        resourceType: "membership",
-        resourceId: input.membershipId,
-        changes: { after: auditChanges },
-        ipAddress: ctx.ipAddress,
-      });
+      await createAuditLog(
+        {
+          tenantId: ctx.tenantId,
+          userId: ctx.session.user.id,
+          action: "user:membership_updated",
+          resourceType: "membership",
+          resourceId: input.membershipId,
+          changes: { after: auditChanges },
+          ipAddress: ctx.ipAddress,
+        },
+        ctx.db
+      );
 
       return updated;
     }),
@@ -332,7 +334,7 @@ export const usersRouter = router({
   removeMember: adminProcedure
     .input(z.object({ membershipId: z.string().uuid() }))
     .mutation(async ({ input, ctx }) => {
-      const [membership] = await db
+      const [membership] = await ctx.db
         .select()
         .from(tenantMemberships)
         .innerJoin(roles, eq(tenantMemberships.roleId, roles.id))
@@ -358,19 +360,22 @@ export const usersRouter = router({
         });
       }
 
-      await db
+      await ctx.db
         .delete(tenantMemberships)
         .where(eq(tenantMemberships.id, input.membershipId));
 
       // Audit
-      await createAuditLog({
-        tenantId: ctx.tenantId,
-        userId: ctx.session.user.id,
-        action: "user:removed",
-        resourceType: "membership",
-        resourceId: input.membershipId,
-        ipAddress: ctx.ipAddress,
-      });
+      await createAuditLog(
+        {
+          tenantId: ctx.tenantId,
+          userId: ctx.session.user.id,
+          action: "user:removed",
+          resourceType: "membership",
+          resourceId: input.membershipId,
+          ipAddress: ctx.ipAddress,
+        },
+        ctx.db
+      );
 
       return { success: true };
     }),

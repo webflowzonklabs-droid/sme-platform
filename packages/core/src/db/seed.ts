@@ -7,12 +7,19 @@ import { SYSTEM_ROLES, SYSTEM_ROLE_PERMISSIONS } from "@sme/shared";
 
 // ============================================
 // Seed Script — creates a usable dev environment
+//
+// Uses DATABASE_ADMIN_URL (superuser) because:
+// 1. It needs to insert into all tables including RLS-protected ones
+// 2. It runs before any tenant context exists
+// 3. It's a dev/setup operation, not a runtime app connection
 // ============================================
 
 async function seed() {
-  const connectionString = process.env.DATABASE_URL;
+  // Use admin connection for seeding (superuser bypasses RLS)
+  const connectionString =
+    process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
   if (!connectionString) {
-    throw new Error("DATABASE_URL is required");
+    throw new Error("DATABASE_ADMIN_URL or DATABASE_URL is required");
   }
 
   const client = postgres(connectionString, { max: 1 });
@@ -176,6 +183,9 @@ async function seed() {
   console.log(`  Operator: operator@demo.com / operator123`);
   console.log(`  PIN:      admin=1234, operator=5678 (hashed in DB)`);
   console.log(`\nTenant:     Demo Company (slug: demo)`);
+  console.log("\nDatabase connections:");
+  console.log(`  App:      DATABASE_URL (sme_app role — RLS enforced)`);
+  console.log(`  Admin:    DATABASE_ADMIN_URL (sme_user — superuser)`);
   console.log("=".repeat(50));
 
   await client.end();

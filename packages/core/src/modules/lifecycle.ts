@@ -1,5 +1,5 @@
 import { eq, and } from "drizzle-orm";
-import { db } from "../db/index";
+import { adminDb, type Database } from "../db/index";
 import { systemModules, tenantModules, roles } from "../db/schema/index";
 import { getModule } from "./registry";
 import { createAuditLog } from "../audit/index";
@@ -13,12 +13,15 @@ import { createAuditLog } from "../audit/index";
  * - Checks dependencies are met
  * - Registers in tenant_modules
  * - Adds default permissions to existing roles
+ *
+ * @param database - Database connection. Defaults to adminDb for admin operations.
  */
 export async function enableModule(
   tenantId: string,
   moduleId: string,
   config?: Record<string, unknown>,
-  userId?: string
+  userId?: string,
+  database: Database = adminDb
 ): Promise<void> {
   const moduleConfig = getModule(moduleId);
   if (!moduleConfig) {
@@ -27,7 +30,7 @@ export async function enableModule(
 
   // Check dependencies
   for (const dep of moduleConfig.dependencies) {
-    const isEnabled = await isModuleEnabled(tenantId, dep);
+    const isEnabled = await isModuleEnabled(tenantId, dep, database);
     if (!isEnabled) {
       throw new Error(
         `Module "${moduleId}" requires "${dep}" to be enabled first`
@@ -36,7 +39,7 @@ export async function enableModule(
   }
 
   // Check if already enabled
-  const existing = await db
+  const existing = await database
     .select()
     .from(tenantModules)
     .where(
@@ -52,14 +55,14 @@ export async function enableModule(
   }
 
   // Ensure module exists in system_modules
-  const systemModule = await db
+  const systemModule = await database
     .select()
     .from(systemModules)
     .where(eq(systemModules.id, moduleId))
     .limit(1);
 
   if (systemModule.length === 0) {
-    await db.insert(systemModules).values({
+    await database.insert(systemModules).values({
       id: moduleConfig.id,
       name: moduleConfig.name,
       description: moduleConfig.description ?? null,
@@ -69,7 +72,7 @@ export async function enableModule(
   }
 
   // Enable for tenant
-  await db.insert(tenantModules).values({
+  await database.insert(tenantModules).values({
     tenantId,
     moduleId,
     config: config ?? {},
@@ -77,7 +80,7 @@ export async function enableModule(
 
   // Add default permissions to existing roles
   if (moduleConfig.roleDefaults) {
-    const tenantRoles = await db
+    const tenantRoles = await database
       .select()
       .from(roles)
       .where(eq(roles.tenantId, tenantId));
@@ -90,7 +93,7 @@ export async function enableModule(
           ...new Set([...existingPerms, ...defaultPerms]),
         ];
 
-        await db
+        await database
           .update(roles)
           .set({ permissions: newPerms })
           .where(eq(roles.id, role.id));
@@ -99,29 +102,34 @@ export async function enableModule(
   }
 
   // Audit log
-  await createAuditLog({
-    tenantId,
-    userId,
-    action: "module:enabled",
-    resourceType: "module",
-    resourceId: undefined,
-    changes: { after: { moduleId, config } },
-  });
+  await createAuditLog(
+    {
+      tenantId,
+      userId,
+      action: "module:enabled",
+      resourceType: "module",
+      resourceId: undefined,
+      changes: { after: { moduleId, config } },
+    },
+    database
+  );
 }
 
 /**
  * Disable a module for a tenant.
  * - Checks no dependent modules are still enabled
  * - Removes from tenant_modules (data preserved in module tables)
- * - Optionally removes module permissions from roles
+ *
+ * @param database - Database connection. Defaults to adminDb for admin operations.
  */
 export async function disableModule(
   tenantId: string,
   moduleId: string,
-  userId?: string
+  userId?: string,
+  database: Database = adminDb
 ): Promise<void> {
   // Check if any enabled module depends on this one
-  const enabledModules = await getEnabledModules(tenantId);
+  const enabledModules = await getEnabledModules(tenantId, database);
   for (const enabled of enabledModules) {
     const modConfig = getModule(enabled.moduleId);
     if (modConfig && modConfig.dependencies.includes(moduleId)) {
@@ -132,7 +140,7 @@ export async function disableModule(
   }
 
   // Remove from tenant_modules
-  await db
+  await database
     .delete(tenantModules)
     .where(
       and(
@@ -142,24 +150,30 @@ export async function disableModule(
     );
 
   // Audit log
-  await createAuditLog({
-    tenantId,
-    userId,
-    action: "module:disabled",
-    resourceType: "module",
-    resourceId: undefined,
-    changes: { before: { moduleId } },
-  });
+  await createAuditLog(
+    {
+      tenantId,
+      userId,
+      action: "module:disabled",
+      resourceType: "module",
+      resourceId: undefined,
+      changes: { before: { moduleId } },
+    },
+    database
+  );
 }
 
 /**
  * Check if a module is enabled for a tenant.
+ *
+ * @param database - Database connection. Pass ctx.db in tenant-scoped contexts.
  */
 export async function isModuleEnabled(
   tenantId: string,
-  moduleId: string
+  moduleId: string,
+  database: Database = adminDb
 ): Promise<boolean> {
-  const result = await db
+  const result = await database
     .select()
     .from(tenantModules)
     .where(
@@ -175,11 +189,14 @@ export async function isModuleEnabled(
 
 /**
  * Get all enabled modules for a tenant.
+ *
+ * @param database - Database connection. Pass ctx.db in tenant-scoped contexts.
  */
 export async function getEnabledModules(
-  tenantId: string
+  tenantId: string,
+  database: Database = adminDb
 ): Promise<{ moduleId: string; config: Record<string, unknown> }[]> {
-  const result = await db
+  const result = await database
     .select({
       moduleId: tenantModules.moduleId,
       config: tenantModules.config,

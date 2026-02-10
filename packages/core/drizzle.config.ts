@@ -5,7 +5,8 @@ export default defineConfig({
   out: "./drizzle",
   dialect: "postgresql",
   dbCredentials: {
-    url: process.env.DATABASE_URL!,
+    // Use admin URL for schema operations (DDL requires superuser)
+    url: process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL!,
   },
   verbose: true,
   strict: true,

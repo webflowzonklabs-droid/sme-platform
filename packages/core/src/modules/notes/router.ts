@@ -3,7 +3,6 @@ import { eq, and, isNull, gt, desc, ilike } from "drizzle-orm";
 import { z } from "zod";
 import { router, tenantProcedure } from "../../trpc/procedures";
 import { requirePermission, requireModule } from "../../trpc/procedures";
-import { db } from "../../db/index";
 import { notes } from "./schema";
 import { createAuditLog } from "../../audit/index";
 import { paginationSchema, paginatedResult } from "@sme/shared";
@@ -18,6 +17,9 @@ function escapeLike(s: string): string {
 // ============================================
 // Notes Router — example module CRUD
 // Module enforcement: all routes require "notes" module to be enabled
+//
+// All queries use ctx.db which is the RLS-enforced transaction
+// set by hasTenantContext middleware. No need to import db directly.
 // ============================================
 
 // Base procedure for notes — requires module to be enabled
@@ -35,8 +37,8 @@ export const notesRouter = router({
       })
     )
     .query(async ({ input, ctx }) => {
-      const tenantId = ctx.session!.session.tenantId!;
-      const items = await db
+      const tenantId = ctx.tenantId;
+      const items = await ctx.db
         .select()
         .from(notes)
         .where(
@@ -62,8 +64,8 @@ export const notesRouter = router({
     .use(requirePermission("notes:notes:read"))
     .input(z.object({ id: z.string().uuid() }))
     .query(async ({ input, ctx }) => {
-      const tenantId = ctx.session!.session.tenantId!;
-      const [note] = await db
+      const tenantId = ctx.tenantId;
+      const [note] = await ctx.db
         .select()
         .from(notes)
         .where(
@@ -94,9 +96,9 @@ export const notesRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
-      const tenantId = ctx.session!.session.tenantId!;
+      const tenantId = ctx.tenantId;
       const userId = ctx.session!.user.id;
-      const [note] = await db
+      const [note] = await ctx.db
         .insert(notes)
         .values({
           tenantId,
@@ -113,15 +115,18 @@ export const notesRouter = router({
         });
       }
 
-      await createAuditLog({
-        tenantId,
-        userId,
-        action: "notes:note:created",
-        resourceType: "note",
-        resourceId: note.id,
-        changes: { after: { title: input.title } },
-        ipAddress: ctx.ipAddress,
-      });
+      await createAuditLog(
+        {
+          tenantId,
+          userId,
+          action: "notes:note:created",
+          resourceType: "note",
+          resourceId: note.id,
+          changes: { after: { title: input.title } },
+          ipAddress: ctx.ipAddress,
+        },
+        ctx.db
+      );
 
       return note;
     }),
@@ -139,14 +144,14 @@ export const notesRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
-      const tenantId = ctx.session!.session.tenantId!;
+      const tenantId = ctx.tenantId;
       const userId = ctx.session!.user.id;
 
       const updateData: Record<string, unknown> = {};
       if (input.title !== undefined) updateData.title = input.title;
       if (input.content !== undefined) updateData.content = input.content;
 
-      const [updated] = await db
+      const [updated] = await ctx.db
         .update(notes)
         .set(updateData)
         .where(
@@ -162,15 +167,18 @@ export const notesRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Note not found" });
       }
 
-      await createAuditLog({
-        tenantId,
-        userId,
-        action: "notes:note:updated",
-        resourceType: "note",
-        resourceId: input.id,
-        changes: { after: updateData },
-        ipAddress: ctx.ipAddress,
-      });
+      await createAuditLog(
+        {
+          tenantId,
+          userId,
+          action: "notes:note:updated",
+          resourceType: "note",
+          resourceId: input.id,
+          changes: { after: updateData },
+          ipAddress: ctx.ipAddress,
+        },
+        ctx.db
+      );
 
       return updated;
     }),
@@ -182,10 +190,10 @@ export const notesRouter = router({
     .use(requirePermission("notes:notes:delete"))
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ input, ctx }) => {
-      const tenantId = ctx.session!.session.tenantId!;
+      const tenantId = ctx.tenantId;
       const userId = ctx.session!.user.id;
 
-      const [deleted] = await db
+      const [deleted] = await ctx.db
         .update(notes)
         .set({
           deletedAt: new Date(),
@@ -204,14 +212,17 @@ export const notesRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Note not found" });
       }
 
-      await createAuditLog({
-        tenantId,
-        userId,
-        action: "notes:note:deleted",
-        resourceType: "note",
-        resourceId: input.id,
-        ipAddress: ctx.ipAddress,
-      });
+      await createAuditLog(
+        {
+          tenantId,
+          userId,
+          action: "notes:note:deleted",
+          resourceType: "note",
+          resourceId: input.id,
+          ipAddress: ctx.ipAddress,
+        },
+        ctx.db
+      );
 
       return { success: true };
     }),

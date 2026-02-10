@@ -1,12 +1,17 @@
 import { eq, and, gt } from "drizzle-orm";
-import { db } from "../db/index";
+import { adminDb } from "../db/index";
 import { sessions, users, tenantMemberships, roles } from "../db/schema/index";
-import { generateToken, hashToken } from "@sme/shared";
+import { hashToken } from "@sme/shared";
 import type { AuthMethod } from "@sme/shared";
 import crypto from "crypto";
 
 // ============================================
 // Session Management — database-backed sessions
+// ============================================
+// All session operations use `adminDb` (superuser connection) because:
+// 1. Session validation happens before tenant context is established
+// 2. It needs to join users + memberships across tenants
+// 3. The `sessions` table has no RLS, but `tenant_memberships` does
 // ============================================
 
 const SESSION_DURATION_MS = 30 * 24 * 60 * 60 * 1000; // 30 days for password auth
@@ -46,7 +51,7 @@ function generateSecureToken(): string {
 
 /**
  * Create a new session for a user.
- * Returns the raw token (to be set as cookie) and the session record.
+ * Returns the raw token (to be set as httpOnly cookie) and the session record.
  */
 export async function createSession(params: {
   userId: string;
@@ -66,7 +71,7 @@ export async function createSession(params: {
 
   const expiresAt = new Date(Date.now() + duration);
 
-  const [session] = await db
+  const [session] = await adminDb
     .insert(sessions)
     .values({
       userId: params.userId,
@@ -95,8 +100,8 @@ export async function validateSession(
 ): Promise<SessionValidationResult | null> {
   const tokenHash = await hashToken(token);
 
-  // Find the session with user data
-  const result = await db
+  // Find the session with user data (uses adminDb to bypass RLS on memberships)
+  const result = await adminDb
     .select({
       sessionId: sessions.id,
       sessionUserId: sessions.userId,
@@ -142,7 +147,7 @@ export async function validateSession(
 
   // If session has a tenant context, load the membership + role
   if (row.sessionTenantId) {
-    const membershipResult = await db
+    const membershipResult = await adminDb
       .select({
         membershipId: tenantMemberships.id,
         roleId: roles.id,
@@ -180,7 +185,7 @@ export async function validateSession(
  * Invalidate (delete) a specific session.
  */
 export async function invalidateSession(sessionId: string): Promise<void> {
-  await db.delete(sessions).where(eq(sessions.id, sessionId));
+  await adminDb.delete(sessions).where(eq(sessions.id, sessionId));
 }
 
 /**
@@ -189,7 +194,7 @@ export async function invalidateSession(sessionId: string): Promise<void> {
 export async function invalidateAllUserSessions(
   userId: string
 ): Promise<void> {
-  await db.delete(sessions).where(eq(sessions.userId, userId));
+  await adminDb.delete(sessions).where(eq(sessions.userId, userId));
 }
 
 /**
@@ -199,7 +204,7 @@ export async function updateSessionTenant(
   sessionId: string,
   tenantId: string
 ): Promise<void> {
-  await db
+  await adminDb
     .update(sessions)
     .set({ tenantId })
     .where(eq(sessions.id, sessionId));
@@ -211,7 +216,7 @@ export async function updateSessionTenant(
  */
 export async function cleanupExpiredSessions(): Promise<number> {
   const { sql } = await import("drizzle-orm");
-  const result = await db
+  const result = await adminDb
     .delete(sessions)
     .where(sql`${sessions.expiresAt} < NOW()`)
     .returning({ id: sessions.id });

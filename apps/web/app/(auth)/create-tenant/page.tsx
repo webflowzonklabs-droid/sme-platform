@@ -24,9 +24,10 @@ export default function CreateTenantPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const createTenant = trpc.tenants.create.useMutation({
-    onSuccess: async (data) => {
-      // Tenant created — switch to it
+  // Use createFirst — allows any authenticated user with zero tenants
+  const createTenant = trpc.tenants.createFirst.useMutation({
+    onSuccess: async () => {
+      // Tenant created — redirect to select it
       window.location.href = `/select-tenant`;
     },
     onError: (err) => {
@@ -59,7 +60,7 @@ export default function CreateTenantPage() {
           Create Organization
         </CardTitle>
         <CardDescription className="text-center">
-          Set up a new business on the platform (admin only)
+          Set up your business on the platform
         </CardDescription>
       </CardHeader>
       <form onSubmit={handleSubmit}>

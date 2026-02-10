@@ -23,6 +23,9 @@ export const users = pgTable(
     avatarUrl: text("avatar_url"),
     isSuperAdmin: boolean("is_super_admin").default(false).notNull(),
     isActive: boolean("is_active").default(true).notNull(),
+    // Login rate limiting (password brute force protection)
+    loginFailedAttempts: integer("login_failed_attempts").default(0).notNull(),
+    loginLockedUntil: timestamp("login_locked_until", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true })
       .defaultNow()
       .notNull(),

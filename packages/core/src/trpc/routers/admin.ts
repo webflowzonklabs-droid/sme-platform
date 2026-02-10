@@ -1,16 +1,14 @@
 import { TRPCError } from "@trpc/server";
-import { eq, and, sql, count } from "drizzle-orm";
+import { eq, count } from "drizzle-orm";
 import { z } from "zod";
 import {
   router,
   superAdminProcedure,
 } from "../procedures";
-import { db } from "../../db/index";
 import {
   tenants,
   tenantMemberships,
   tenantModules,
-  systemModules,
   users,
 } from "../../db/schema/index";
 import {
@@ -24,14 +22,27 @@ import { createAuditLog } from "../../audit/index";
 // ============================================
 // Admin Router — platform owner operations
 // Only accessible to super admins (isSuperAdmin = true)
+//
+// ARCHITECTURE DECISION (2026-02-11):
+// Admin operations use ctx.db which is adminDb (superuser connection).
+// This INTENTIONALLY bypasses RLS because admin operations need
+// cross-tenant visibility (listing all tenants, managing modules,
+// getting platform-wide stats, etc.).
+//
+// Security is enforced by the superAdminProcedure middleware which
+// verifies the user has isSuperAdmin = true before any admin route
+// can execute. This is defense-in-depth: authorization at the
+// application layer (superAdminProcedure) + RLS at the database
+// layer for tenant-scoped operations.
 // ============================================
 
 export const adminRouter = router({
   /**
    * List all tenants with basic stats.
+   * Uses adminDb to query across all tenants.
    */
-  listTenants: superAdminProcedure.query(async () => {
-    const allTenants = await db
+  listTenants: superAdminProcedure.query(async ({ ctx }) => {
+    const allTenants = await ctx.db
       .select({
         id: tenants.id,
         name: tenants.name,
@@ -44,7 +55,7 @@ export const adminRouter = router({
       .orderBy(tenants.createdAt);
 
     // Get member counts per tenant
-    const memberCounts = await db
+    const memberCounts = await ctx.db
       .select({
         tenantId: tenantMemberships.tenantId,
         count: count(),
@@ -56,7 +67,7 @@ export const adminRouter = router({
     const countMap = new Map(memberCounts.map((m) => [m.tenantId, m.count]));
 
     // Get module counts per tenant
-    const moduleCounts = await db
+    const moduleCounts = await ctx.db
       .select({
         tenantId: tenantModules.tenantId,
         count: count(),
@@ -76,10 +87,10 @@ export const adminRouter = router({
   /**
    * Get platform-wide stats.
    */
-  stats: superAdminProcedure.query(async () => {
-    const [tenantCount] = await db.select({ count: count() }).from(tenants);
-    const [userCount] = await db.select({ count: count() }).from(users);
-    const [activeTenants] = await db
+  stats: superAdminProcedure.query(async ({ ctx }) => {
+    const [tenantCount] = await ctx.db.select({ count: count() }).from(tenants);
+    const [userCount] = await ctx.db.select({ count: count() }).from(users);
+    const [activeTenants] = await ctx.db
       .select({ count: count() })
       .from(tenants)
       .where(eq(tenants.isActive, true));
@@ -105,7 +116,7 @@ export const adminRouter = router({
       })
     )
     .mutation(async ({ input, ctx }) => {
-      const [updated] = await db
+      const [updated] = await ctx.db
         .update(tenants)
         .set({ isActive: input.isActive })
         .where(eq(tenants.id, input.tenantId))
@@ -118,14 +129,17 @@ export const adminRouter = router({
         });
       }
 
-      await createAuditLog({
-        tenantId: input.tenantId,
-        userId: ctx.session.user.id,
-        action: input.isActive ? "admin:tenant:activated" : "admin:tenant:deactivated",
-        resourceType: "tenant",
-        resourceId: input.tenantId,
-        ipAddress: ctx.ipAddress,
-      });
+      await createAuditLog(
+        {
+          tenantId: input.tenantId,
+          userId: ctx.session.user.id,
+          action: input.isActive ? "admin:tenant:activated" : "admin:tenant:deactivated",
+          resourceType: "tenant",
+          resourceId: input.tenantId,
+          ipAddress: ctx.ipAddress,
+        },
+        ctx.db
+      );
 
       return updated;
     }),
@@ -135,8 +149,8 @@ export const adminRouter = router({
    */
   getTenantModules: superAdminProcedure
     .input(z.object({ tenantId: z.string().uuid() }))
-    .query(async ({ input }) => {
-      const enabled = await getEnabledModules(input.tenantId);
+    .query(async ({ input, ctx }) => {
+      const enabled = await getEnabledModules(input.tenantId, ctx.db);
       return enabled;
     }),
 
@@ -157,7 +171,8 @@ export const adminRouter = router({
           input.tenantId,
           input.moduleId,
           input.config,
-          ctx.session.user.id
+          ctx.session.user.id,
+          ctx.db
         );
         return { success: true, moduleId: input.moduleId };
       } catch (error) {
@@ -186,7 +201,8 @@ export const adminRouter = router({
         await disableModule(
           input.tenantId,
           input.moduleId,
-          ctx.session.user.id
+          ctx.session.user.id,
+          ctx.db
         );
         return { success: true, moduleId: input.moduleId };
       } catch (error) {

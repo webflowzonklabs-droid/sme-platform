@@ -1,12 +1,9 @@
 import { TRPCError } from "@trpc/server";
-import { eq } from "drizzle-orm";
 import {
   router,
   tenantProcedure,
   superAdminProcedure,
 } from "../procedures";
-import { db } from "../../db/index";
-import { systemModules } from "../../db/schema/index";
 import {
   getModuleRegistry,
   getModule,
@@ -39,9 +36,10 @@ export const modulesRouter = router({
 
   /**
    * List enabled modules for current tenant.
+   * Uses ctx.db (RLS-enforced transaction).
    */
   enabled: tenantProcedure.query(async ({ ctx }) => {
-    const enabled = await getEnabledModules(ctx.tenantId);
+    const enabled = await getEnabledModules(ctx.tenantId, ctx.db);
     return enabled.map((m) => {
       const modConfig = getModule(m.moduleId);
       return {
@@ -56,8 +54,8 @@ export const modulesRouter = router({
 
   /**
    * Enable a module for a tenant.
-   * SECURITY: Only super admins (platform owner) can enable/disable modules.
-   * This is the monetization model — tenants do NOT control their own modules.
+   * SECURITY: Only super admins can enable/disable modules (monetization model).
+   * Uses ctx.db (adminDb for super admin — bypasses RLS for cross-tenant ops).
    */
   enable: superAdminProcedure
     .input(
@@ -71,7 +69,8 @@ export const modulesRouter = router({
           input.tenantId,
           input.moduleId,
           input.config,
-          ctx.session.user.id
+          ctx.session.user.id,
+          ctx.db
         );
         return { success: true, moduleId: input.moduleId };
       } catch (error) {
@@ -87,7 +86,7 @@ export const modulesRouter = router({
 
   /**
    * Disable a module for a tenant.
-   * SECURITY: Only super admins (platform owner) can enable/disable modules.
+   * SECURITY: Only super admins can enable/disable modules.
    */
   disable: superAdminProcedure
     .input(
@@ -100,7 +99,8 @@ export const modulesRouter = router({
         await disableModule(
           input.tenantId,
           input.moduleId,
-          ctx.session.user.id
+          ctx.session.user.id,
+          ctx.db
         );
         return { success: true, moduleId: input.moduleId };
       } catch (error) {

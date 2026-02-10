@@ -8,13 +8,11 @@ import {
   adminProcedure,
   superAdminProcedure,
 } from "../procedures";
-import { db } from "../../db/index";
 import {
   tenants,
   tenantMemberships,
   roles,
 } from "../../db/schema/index";
-import { createSession } from "../../auth/session";
 import { createAuditLog } from "../../audit/index";
 import {
   createTenantSchema,
@@ -28,14 +26,14 @@ import {
 
 export const tenantsRouter = router({
   /**
-   * Create a new tenant.
-   * Only super admins can create tenants (platform-level operation).
+   * Create a new tenant (super-admin only).
+   * For self-service onboarding, use auth.registerWithTenant or tenants.createFirst.
    */
   create: superAdminProcedure
     .input(createTenantSchema)
     .mutation(async ({ input, ctx }) => {
       // Check slug uniqueness
-      const existing = await db
+      const existing = await ctx.db
         .select({ id: tenants.id })
         .from(tenants)
         .where(eq(tenants.slug, input.slug))
@@ -49,7 +47,7 @@ export const tenantsRouter = router({
       }
 
       // Create tenant
-      const [tenant] = await db
+      const [tenant] = await ctx.db
         .insert(tenants)
         .values({
           name: input.name,
@@ -66,7 +64,7 @@ export const tenantsRouter = router({
       }
 
       // Create system roles for the tenant
-      const systemRoles = await db
+      const systemRoles = await ctx.db
         .insert(roles)
         .values(
           SYSTEM_ROLES.map((roleSlug) => ({
@@ -89,31 +87,134 @@ export const tenantsRouter = router({
       }
 
       // Add the creating user as owner
-      await db.insert(tenantMemberships).values({
+      await ctx.db.insert(tenantMemberships).values({
+        tenantId: tenant.id,
+        userId: ctx.session.user.id,
+        roleId: ownerRole.id,
+      });
+
+      // Audit (uses ctx.db which is adminDb for super admin)
+      await createAuditLog(
+        {
+          tenantId: tenant.id,
+          userId: ctx.session.user.id,
+          action: "tenant:created",
+          resourceType: "tenant",
+          resourceId: tenant.id,
+          changes: { after: { name: tenant.name, slug: tenant.slug } },
+          ipAddress: ctx.ipAddress,
+        },
+        ctx.db
+      );
+
+      return { tenant };
+    }),
+
+  /**
+   * Create first tenant for a user with zero tenants (self-service onboarding).
+   * Only works if the user has NO existing tenant memberships.
+   * This is the ONLY way a non-super-admin can create a tenant.
+   */
+  createFirst: protectedProcedure
+    .input(createTenantSchema)
+    .mutation(async ({ input, ctx }) => {
+      // Verify user has zero tenants
+      const existingMemberships = await ctx.db
+        .select({ id: tenantMemberships.id })
+        .from(tenantMemberships)
+        .where(eq(tenantMemberships.userId, ctx.session.user.id))
+        .limit(1);
+
+      if (existingMemberships.length > 0) {
+        throw new TRPCError({
+          code: "FORBIDDEN",
+          message: "You already belong to an organization. Contact an admin to create additional organizations.",
+        });
+      }
+
+      // Check slug uniqueness
+      const existing = await ctx.db
+        .select({ id: tenants.id })
+        .from(tenants)
+        .where(eq(tenants.slug, input.slug))
+        .limit(1);
+
+      if (existing.length > 0) {
+        throw new TRPCError({
+          code: "CONFLICT",
+          message: "An organization with this URL already exists",
+        });
+      }
+
+      // Create tenant
+      const [tenant] = await ctx.db
+        .insert(tenants)
+        .values({
+          name: input.name,
+          slug: input.slug,
+          settings: input.settings ?? {},
+        })
+        .returning();
+
+      if (!tenant) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to create organization",
+        });
+      }
+
+      // Create system roles
+      const systemRoles = await ctx.db
+        .insert(roles)
+        .values(
+          SYSTEM_ROLES.map((roleSlug) => ({
+            tenantId: tenant.id,
+            name: roleSlug.charAt(0).toUpperCase() + roleSlug.slice(1),
+            slug: roleSlug,
+            permissions: SYSTEM_ROLE_PERMISSIONS[roleSlug],
+            isSystem: true,
+          }))
+        )
+        .returning();
+
+      const ownerRole = systemRoles.find((r) => r.slug === "owner");
+      if (!ownerRole) {
+        throw new TRPCError({
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Failed to create owner role",
+        });
+      }
+
+      // Add user as owner
+      await ctx.db.insert(tenantMemberships).values({
         tenantId: tenant.id,
         userId: ctx.session.user.id,
         roleId: ownerRole.id,
       });
 
       // Audit
-      await createAuditLog({
-        tenantId: tenant.id,
-        userId: ctx.session.user.id,
-        action: "tenant:created",
-        resourceType: "tenant",
-        resourceId: tenant.id,
-        changes: { after: { name: tenant.name, slug: tenant.slug } },
-        ipAddress: ctx.ipAddress,
-      });
+      await createAuditLog(
+        {
+          tenantId: tenant.id,
+          userId: ctx.session.user.id,
+          action: "tenant:created",
+          resourceType: "tenant",
+          resourceId: tenant.id,
+          changes: { after: { name: tenant.name, slug: tenant.slug, selfService: true } },
+          ipAddress: ctx.ipAddress,
+        },
+        ctx.db
+      );
 
       return { tenant };
     }),
 
   /**
    * Get current tenant details.
+   * Uses ctx.db (RLS-enforced transaction).
    */
   current: tenantProcedure.query(async ({ ctx }) => {
-    const [tenant] = await db
+    const [tenant] = await ctx.db
       .select()
       .from(tenants)
       .where(eq(tenants.id, ctx.tenantId))
@@ -129,7 +230,7 @@ export const tenantsRouter = router({
   /**
    * Update tenant settings.
    * SECURITY FIX: Always use ctx.tenantId instead of user-supplied ID.
-   * This prevents cross-tenant data modification (C4).
+   * Uses ctx.db (RLS-enforced transaction).
    */
   update: adminProcedure
     .input(
@@ -151,7 +252,7 @@ export const tenantsRouter = router({
       }
 
       // Always use session's tenant ID — never accept user-supplied tenant ID
-      const [updated] = await db
+      const [updated] = await ctx.db
         .update(tenants)
         .set(updateData)
         .where(eq(tenants.id, ctx.tenantId))
@@ -164,15 +265,18 @@ export const tenantsRouter = router({
         });
       }
 
-      await createAuditLog({
-        tenantId: ctx.tenantId,
-        userId: ctx.session.user.id,
-        action: "tenant:updated",
-        resourceType: "tenant",
-        resourceId: ctx.tenantId,
-        changes: { after: updateData },
-        ipAddress: ctx.ipAddress,
-      });
+      await createAuditLog(
+        {
+          tenantId: ctx.tenantId,
+          userId: ctx.session.user.id,
+          action: "tenant:updated",
+          resourceType: "tenant",
+          resourceId: ctx.tenantId,
+          changes: { after: updateData },
+          ipAddress: ctx.ipAddress,
+        },
+        ctx.db
+      );
 
       return updated;
     }),

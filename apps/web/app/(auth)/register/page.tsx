@@ -14,8 +14,6 @@ import {
   Input,
   Label,
 } from "@sme/ui";
-import { trpc } from "@/trpc/client";
-import { setSessionCookie } from "@/lib/auth";
 
 export default function RegisterPage() {
   const router = useRouter();
@@ -25,17 +23,6 @@ export default function RegisterPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-
-  const registerMutation = trpc.auth.register.useMutation({
-    onSuccess: async (data) => {
-      await setSessionCookie(data.token);
-      router.push("/create-tenant");
-    },
-    onError: (err) => {
-      setError(err.message);
-      setLoading(false);
-    },
-  });
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -47,7 +34,31 @@ export default function RegisterPage() {
     }
 
     setLoading(true);
-    registerMutation.mutate({ email, password, fullName });
+
+    try {
+      // Call the API route which sets the httpOnly cookie server-side.
+      // The session token NEVER appears in client JS.
+      const res = await fetch("/api/auth/register", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password, fullName }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error ?? "Registration failed");
+        setLoading(false);
+        return;
+      }
+
+      // Cookie is already set by the API route response.
+      // Redirect to create first tenant.
+      router.push("/create-tenant");
+    } catch {
+      setError("Network error. Please try again.");
+      setLoading(false);
+    }
   };
 
   return (

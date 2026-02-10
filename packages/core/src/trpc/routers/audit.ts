@@ -1,14 +1,14 @@
-import { eq, and, desc, gt, sql } from "drizzle-orm";
+import { eq, and, desc, gt } from "drizzle-orm";
 import { z } from "zod";
 import { router, tenantProcedure } from "../procedures";
 import { requirePermission } from "../procedures";
-import { db } from "../../db/index";
 import { auditLogs, users } from "../../db/schema/index";
 import { paginationSchema } from "@sme/shared";
 import { paginatedResult } from "@sme/shared";
 
 // ============================================
 // Audit Router — view audit logs
+// All queries use ctx.db (RLS-enforced transaction)
 // ============================================
 
 export const auditRouter = router({
@@ -25,7 +25,7 @@ export const auditRouter = router({
       })
     )
     .query(async ({ input, ctx }) => {
-      const items = await db
+      const items = await ctx.db
         .select({
           id: auditLogs.id,
           action: auditLogs.action,

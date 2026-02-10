@@ -1,4 +1,4 @@
-import { db } from "../db/index";
+import { adminDb, type Database } from "../db/index";
 import { auditLogs } from "../db/schema/index";
 
 // ============================================
@@ -21,9 +21,17 @@ export interface AuditLogEntry {
 /**
  * Create an audit log entry.
  * This is append-only — audit logs are never updated or deleted.
+ *
+ * @param entry - The audit log data
+ * @param database - Database connection to use. Pass ctx.db from route handlers
+ *                   to ensure the insert runs within the RLS-scoped transaction.
+ *                   Defaults to adminDb (superuser) for standalone/admin calls.
  */
-export async function createAuditLog(entry: AuditLogEntry): Promise<void> {
-  await db.insert(auditLogs).values({
+export async function createAuditLog(
+  entry: AuditLogEntry,
+  database: Database = adminDb
+): Promise<void> {
+  await database.insert(auditLogs).values({
     tenantId: entry.tenantId,
     userId: entry.userId ?? null,
     action: entry.action,
@@ -38,11 +46,12 @@ export async function createAuditLog(entry: AuditLogEntry): Promise<void> {
  * Create multiple audit log entries in a batch.
  */
 export async function createAuditLogBatch(
-  entries: AuditLogEntry[]
+  entries: AuditLogEntry[],
+  database: Database = adminDb
 ): Promise<void> {
   if (entries.length === 0) return;
 
-  await db.insert(auditLogs).values(
+  await database.insert(auditLogs).values(
     entries.map((entry) => ({
       tenantId: entry.tenantId,
       userId: entry.userId ?? null,

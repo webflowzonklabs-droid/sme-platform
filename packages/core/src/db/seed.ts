@@ -7,12 +7,19 @@ import { SYSTEM_ROLES, SYSTEM_ROLE_PERMISSIONS } from "@sme/shared";
 
 // ============================================
 // Seed Script — creates a usable dev environment
+//
+// Uses DATABASE_ADMIN_URL (superuser) because:
+// 1. It needs to insert into all tables including RLS-protected ones
+// 2. It runs before any tenant context exists
+// 3. It's a dev/setup operation, not a runtime app connection
 // ============================================
 
 async function seed() {
-  const connectionString = process.env.DATABASE_URL;
+  // Use admin connection for seeding (superuser bypasses RLS)
+  const connectionString =
+    process.env.DATABASE_ADMIN_URL ?? process.env.DATABASE_URL;
   if (!connectionString) {
-    throw new Error("DATABASE_URL is required");
+    throw new Error("DATABASE_ADMIN_URL or DATABASE_URL is required");
   }
 
   const client = postgres(connectionString, { max: 1 });
@@ -77,8 +84,8 @@ async function seed() {
     }
   }
 
-  // 3. Create admin user
-  console.log("\n👤 Creating admin user...");
+  // 3. Create admin user (marked as super admin)
+  console.log("\n👤 Creating admin user (super admin)...");
   const adminPassword = "admin123456";
   const passwordHash = await hashPassword(adminPassword);
 
@@ -89,6 +96,7 @@ async function seed() {
       passwordHash,
       fullName: "Admin User",
       emailVerified: true,
+      isSuperAdmin: true, // Platform owner
     })
     .onConflictDoNothing({ target: schema.users.email })
     .returning();
@@ -97,20 +105,22 @@ async function seed() {
     throw new Error("Failed to create admin user");
   }
 
-  console.log(`  ↳ Created user: ${adminUser.email}`);
+  console.log(`  ↳ Created user: ${adminUser.email} (super admin)`);
 
-  // 4. Assign admin user as tenant owner
+  // 4. Assign admin user as tenant owner — hash the PIN
   const ownerRoleId = roleMap.get("owner");
   if (!ownerRoleId) throw new Error("Owner role not found");
 
+  const adminPinHash = await hashPassword("1234");
   await db.insert(schema.tenantMemberships).values({
     tenantId: tenant.id,
     userId: adminUser.id,
     roleId: ownerRoleId,
-    pinCode: "1234",
+    pinHash: adminPinHash, // Hashed PIN, not plaintext
+    pinCode: null, // No plaintext storage
   });
 
-  console.log("  ↳ Assigned as tenant owner");
+  console.log("  ↳ Assigned as tenant owner (PIN hashed)");
 
   // 5. Create a second test user (operator)
   console.log("\n👤 Creating test operator...");
@@ -129,13 +139,15 @@ async function seed() {
   if (operatorUser) {
     const operatorRoleId = roleMap.get("operator");
     if (operatorRoleId) {
+      const operatorPinHash = await hashPassword("5678");
       await db.insert(schema.tenantMemberships).values({
         tenantId: tenant.id,
         userId: operatorUser.id,
         roleId: operatorRoleId,
-        pinCode: "5678",
+        pinHash: operatorPinHash, // Hashed PIN
+        pinCode: null,
       });
-      console.log(`  ↳ Created user: ${operatorUser.email} (operator role)`);
+      console.log(`  ↳ Created user: ${operatorUser.email} (operator role, PIN hashed)`);
     }
   }
 
@@ -167,10 +179,13 @@ async function seed() {
   console.log("\n" + "=".repeat(50));
   console.log("✅ Seed complete!\n");
   console.log("Login credentials:");
-  console.log(`  Admin:    admin@demo.com / ${adminPassword}`);
+  console.log(`  Admin:    admin@demo.com / ${adminPassword} (super admin)`);
   console.log(`  Operator: operator@demo.com / operator123`);
-  console.log(`  PIN:      admin=1234, operator=5678`);
+  console.log(`  PIN:      admin=1234, operator=5678 (hashed in DB)`);
   console.log(`\nTenant:     Demo Company (slug: demo)`);
+  console.log("\nDatabase connections:");
+  console.log(`  App:      DATABASE_URL (sme_app role — RLS enforced)`);
+  console.log(`  Admin:    DATABASE_ADMIN_URL (sme_user — superuser)`);
   console.log("=".repeat(50));
 
   await client.end();

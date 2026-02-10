@@ -3,7 +3,7 @@
 // ============================================
 
 // Database
-export { db, schema } from "./db/index";
+export { db, adminDb, schema } from "./db/index";
 export type { Database } from "./db/index";
 
 // Auth
@@ -14,8 +14,18 @@ export {
   validateSession,
   invalidateSession,
   invalidateAllUserSessions,
+  cleanupExpiredSessions,
+  loginWithPassword,
+  registerUser,
+  registerUserWithTenant,
+  AuthError,
 } from "./auth/index";
-export type { SessionValidationResult } from "./auth/index";
+export type {
+  SessionValidationResult,
+  LoginResult,
+  RegisterResult,
+  RegisterWithTenantResult,
+} from "./auth/index";
 
 // RBAC
 export {
@@ -26,7 +36,7 @@ export {
 } from "./rbac/index";
 
 // Tenant
-export { withTenant, setTenantContext } from "./tenant/index";
+export { withTenant, setTenantContext, getTenantSlugById } from "./tenant/index";
 
 // Modules
 export {
@@ -55,7 +65,10 @@ export {
   protectedProcedure,
   tenantProcedure,
   adminProcedure,
+  superAdminProcedure,
   createCallerFactory,
+  requirePermission,
+  requireModule,
   appRouter,
 } from "./trpc/index";
 export type { Context, AppRouter } from "./trpc/index";

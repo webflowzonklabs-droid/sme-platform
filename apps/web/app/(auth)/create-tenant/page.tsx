@@ -14,7 +14,6 @@ import {
   Label,
 } from "@sme/ui";
 import { trpc } from "@/trpc/client";
-import { setSessionCookie } from "@/lib/auth";
 import { slugify } from "@sme/shared";
 
 export default function CreateTenantPage() {
@@ -25,10 +24,11 @@ export default function CreateTenantPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const createTenant = trpc.tenants.create.useMutation({
-    onSuccess: async (data) => {
-      await setSessionCookie(data.token);
-      window.location.href = `/${data.tenant.slug}`;
+  // Use createFirst — allows any authenticated user with zero tenants
+  const createTenant = trpc.tenants.createFirst.useMutation({
+    onSuccess: async () => {
+      // Tenant created — redirect to select it
+      window.location.href = `/select-tenant`;
     },
     onError: (err) => {
       setError(err.message);

@@ -5,6 +5,9 @@ export {
   protectedProcedure,
   tenantProcedure,
   adminProcedure,
+  superAdminProcedure,
   createCallerFactory,
+  requirePermission,
+  requireModule,
 } from "./procedures";
 export { appRouter, type AppRouter } from "./routers/index";

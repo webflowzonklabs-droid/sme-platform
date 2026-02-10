@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import {
   Card,
@@ -12,11 +13,11 @@ import {
 } from "@sme/ui";
 import { Building2, Plus } from "lucide-react";
 import { trpc } from "@/trpc/client";
-import { setSessionCookie } from "@/lib/auth";
 
 export default function SelectTenantPage() {
   const router = useRouter();
   const { data: tenants, isLoading } = trpc.auth.myTenants.useQuery();
+  const autoSwitchDone = useRef(false);
   const switchTenant = trpc.auth.switchTenant.useMutation({
     onSuccess: (data) => {
       // Find the tenant slug
@@ -27,6 +28,14 @@ export default function SelectTenantPage() {
       }
     },
   });
+
+  // FIX: Wrap auto-switch in useEffect to prevent render-time mutations (H10)
+  useEffect(() => {
+    if (tenants?.length === 1 && !autoSwitchDone.current) {
+      autoSwitchDone.current = true;
+      switchTenant.mutate({ tenantId: tenants[0]!.tenantId });
+    }
+  }, [tenants]);
 
   if (isLoading) {
     return (
@@ -57,14 +66,12 @@ export default function SelectTenantPage() {
     );
   }
 
-  // If only one tenant, auto-switch
+  // If only one tenant, show redirecting message
   if (tenants.length === 1) {
-    const tenant = tenants[0]!;
-    switchTenant.mutate({ tenantId: tenant.tenantId });
     return (
       <Card>
         <CardContent className="p-8 text-center text-muted-foreground">
-          Redirecting to {tenant.tenantName}...
+          Redirecting to {tenants[0]!.tenantName}...
         </CardContent>
       </Card>
     );

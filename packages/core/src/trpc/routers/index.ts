@@ -5,11 +5,17 @@ import { usersRouter } from "./users";
 import { rolesRouter } from "./roles";
 import { modulesRouter } from "./modules";
 import { auditRouter } from "./audit";
+import { adminRouter } from "./admin";
 import { notesRouter } from "../../modules/notes/router";
 
 // ============================================
 // Root App Router — all core routes + module routes
 // ============================================
+// Module routers are imported from the module registry pattern.
+// While the module registry supports dynamic registration, we keep
+// static imports here for TypeScript type safety on the AppRouter type.
+// The requireModule() middleware on each module router handles enforcement.
+// New modules should be added here AND registered via defineModule().
 
 export const appRouter = router({
   // Core routes
@@ -19,8 +25,10 @@ export const appRouter = router({
   roles: rolesRouter,
   modules: modulesRouter,
   audit: auditRouter,
+  admin: adminRouter,
 
-  // Module routes (registered at startup)
+  // Module routes (statically imported for type safety, 
+  // enforced at runtime via requireModule() middleware)
   notes: notesRouter,
 });
 

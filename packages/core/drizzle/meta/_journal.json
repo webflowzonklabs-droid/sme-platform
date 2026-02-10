@@ -8,6 +8,20 @@
       "when": 1770743684611,
       "tag": "0000_purple_chronomancer",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1770744000000,
+      "tag": "0001_security_hardening",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1770744600000,
+      "tag": "0002_login_rate_limiting",
+      "breakpoints": true
     }
   ]
 }

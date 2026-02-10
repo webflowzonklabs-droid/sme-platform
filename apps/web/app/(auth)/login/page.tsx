@@ -14,8 +14,6 @@ import {
   Input,
   Label,
 } from "@sme/ui";
-import { trpc } from "@/trpc/client";
-import { setSessionCookie } from "@/lib/auth";
 
 export default function LoginPage() {
   const router = useRouter();
@@ -24,31 +22,41 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const loginMutation = trpc.auth.login.useMutation({
-    onSuccess: async (data) => {
-      await setSessionCookie(data.token);
-      if (data.tenantId) {
-        // User has exactly one tenant — go to dashboard
-        router.push("/select-tenant");
-      } else if (data.hasMulipleTenants) {
-        // Multiple tenants — show selector
-        router.push("/select-tenant");
-      } else {
-        // No tenants — prompt to create one
-        router.push("/create-tenant");
-      }
-    },
-    onError: (err) => {
-      setError(err.message);
-      setLoading(false);
-    },
-  });
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setLoading(true);
-    loginMutation.mutate({ email, password });
+
+    try {
+      // Call the API route which sets the httpOnly cookie server-side.
+      // The session token NEVER appears in client JS.
+      const res = await fetch("/api/auth/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email, password }),
+      });
+
+      const data = await res.json();
+
+      if (!res.ok) {
+        setError(data.error ?? "Login failed");
+        setLoading(false);
+        return;
+      }
+
+      // Cookie is already set by the API route response.
+      // Navigate based on tenant state.
+      if (data.tenantId) {
+        router.push("/select-tenant");
+      } else if (data.hasMultipleTenants) {
+        router.push("/select-tenant");
+      } else {
+        router.push("/create-tenant");
+      }
+    } catch {
+      setError("Network error. Please try again.");
+      setLoading(false);
+    }
   };
 
   return (

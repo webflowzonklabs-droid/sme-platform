@@ -8,11 +8,6 @@ export default async function HomePage() {
     redirect("/login");
   }
 
-  if (!session.session.tenantId) {
-    redirect("/select-tenant");
-  }
-
-  // Get tenant slug for redirect
-  // For now, redirect to select-tenant which will handle the routing
+  // If authenticated, go to tenant selection
   redirect("/select-tenant");
 }

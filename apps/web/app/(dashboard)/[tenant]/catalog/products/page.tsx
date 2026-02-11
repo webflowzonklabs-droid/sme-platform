@@ -94,7 +94,7 @@ export default function ProductsPage() {
       {productsData && productsData.data.length > 0 ? (
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
           {productsData.data.map((product) => {
-            const status = stockStatusLabels[product.stockStatus] ?? stockStatusLabels.in_stock;
+            const status = stockStatusLabels[product.stockStatus] ?? { label: "In Stock", variant: "default" as const };
             return (
               <Card key={product.id} className="group cursor-pointer" onClick={() => router.push(`/${tenantSlug}/catalog/products/${product.id}`)}>
                 <CardHeader className="pb-2">
@@ -123,7 +123,7 @@ export default function ProductsPage() {
                 <CardContent>
                   <div className="flex items-center gap-2 mb-2">
                     {product.brand && <span className="text-sm text-muted-foreground">{product.brand}</span>}
-                    <Badge variant={status.variant as "default" | "secondary" | "destructive" | "outline"}>{status.label}</Badge>
+                    <Badge variant={status.variant}>{status.label}</Badge>
                     {product.isFeatured && <Badge variant="secondary">Featured</Badge>}
                     {product.isNew && <Badge variant="outline">New</Badge>}
                   </div>

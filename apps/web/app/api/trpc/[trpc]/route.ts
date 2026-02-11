@@ -6,6 +6,8 @@ import { cookies } from "next/headers";
 // Import core to trigger module registration side effects
 import "@sme/core";
 
+export const dynamic = "force-dynamic";
+
 const handler = async (req: Request) => {
   return fetchRequestHandler({
     endpoint: "/api/trpc",

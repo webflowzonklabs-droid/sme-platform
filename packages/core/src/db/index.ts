@@ -3,8 +3,11 @@ import postgres from "postgres";
 import * as schema from "./schema/index";
 
 // ============================================
-// Database Connections
+// Database Connections (Lazy-Initialized)
 // ============================================
+// Connections are created on first access to avoid errors during
+// Next.js build-time page data collection (no env vars at build).
+//
 // Two connection pools for RLS compliance:
 //
 // 1. `db` — connects as `sme_app` (non-superuser).
@@ -22,35 +25,55 @@ import * as schema from "./schema/index";
 // a transaction with SET LOCAL for defense-in-depth via RLS.
 // ============================================
 
-const appConnectionString = process.env.DATABASE_URL;
-if (!appConnectionString) {
-  throw new Error("DATABASE_URL environment variable is required");
+let _db: ReturnType<typeof drizzle> | null = null;
+let _adminDb: ReturnType<typeof drizzle> | null = null;
+
+function getDb() {
+  if (!_db) {
+    const appConnectionString = process.env.DATABASE_URL;
+    if (!appConnectionString) {
+      throw new Error("DATABASE_URL environment variable is required");
+    }
+    const appClient = postgres(appConnectionString, {
+      max: 10,
+      idle_timeout: 20,
+      connect_timeout: 10,
+    });
+    _db = drizzle(appClient, { schema });
+  }
+  return _db;
 }
 
-// Admin/superuser connection for auth, session validation, admin ops, migrations
-// Falls back to DATABASE_URL if DATABASE_ADMIN_URL is not set (dev convenience)
-const adminConnectionString =
-  process.env.DATABASE_ADMIN_URL ?? appConnectionString;
-
-// App connection pool (sme_app role, respects RLS)
-const appClient = postgres(appConnectionString, {
-  max: 10,
-  idle_timeout: 20,
-  connect_timeout: 10,
-});
-
-// Admin connection pool (sme_user superuser, bypasses RLS)
-const adminClient = postgres(adminConnectionString, {
-  max: 5,
-  idle_timeout: 20,
-  connect_timeout: 10,
-});
+function getAdminDb() {
+  if (!_adminDb) {
+    const appConnectionString = process.env.DATABASE_URL;
+    const adminConnectionString = process.env.DATABASE_ADMIN_URL ?? appConnectionString;
+    if (!adminConnectionString) {
+      throw new Error("DATABASE_URL or DATABASE_ADMIN_URL environment variable is required");
+    }
+    const adminClient = postgres(adminConnectionString, {
+      max: 5,
+      idle_timeout: 20,
+      connect_timeout: 10,
+    });
+    _adminDb = drizzle(adminClient, { schema });
+  }
+  return _adminDb;
+}
 
 /** Tenant-scoped database — connects as sme_app, respects RLS */
-export const db = drizzle(appClient, { schema });
+export const db = new Proxy({} as ReturnType<typeof drizzle>, {
+  get(_target, prop) {
+    return (getDb() as any)[prop];
+  },
+});
 
 /** Admin database — connects as superuser, bypasses RLS */
-export const adminDb = drizzle(adminClient, { schema });
+export const adminDb = new Proxy({} as ReturnType<typeof drizzle>, {
+  get(_target, prop) {
+    return (getAdminDb() as any)[prop];
+  },
+});
 
 // Export schema for convenience
 export { schema };

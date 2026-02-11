@@ -1,8 +1,8 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  transpilePackages: ["@sme/core", "@sme/shared", "@sme/ui"],
-  serverExternalPackages: ["postgres"],
+  transpilePackages: ["@sme/shared", "@sme/ui"],
+  serverExternalPackages: ["postgres", "@sme/core"],
   experimental: {
     serverActions: {
       bodySizeLimit: "2mb",

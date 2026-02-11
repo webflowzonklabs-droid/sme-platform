@@ -3,9 +3,6 @@ import { appRouter, createContext } from "@sme/core/trpc";
 import { validateSession } from "@sme/core/auth";
 import { cookies } from "next/headers";
 
-// Import core to trigger module registration side effects
-import "@sme/core";
-
 export const dynamic = "force-dynamic";
 
 const handler = async (req: Request) => {

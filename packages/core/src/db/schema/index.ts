@@ -23,3 +23,24 @@ export { auditLogs, type AuditLog, type NewAuditLog } from "./audit-logs";
 
 // Module schemas (included for migration generation)
 export { notes, type Note, type NewNote } from "../../modules/notes/schema";
+export {
+  catalogCategories,
+  catalogSubcategories,
+  catalogProducts,
+  catalogProductSubcategories,
+  catalogProductPhotos,
+  catalogAttributeDefinitions,
+  catalogProductAttributes,
+  type CatalogCategory,
+  type NewCatalogCategory,
+  type CatalogSubcategory,
+  type NewCatalogSubcategory,
+  type CatalogProduct,
+  type NewCatalogProduct,
+  type CatalogProductPhoto,
+  type NewCatalogProductPhoto,
+  type CatalogAttributeDefinition,
+  type NewCatalogAttributeDefinition,
+  type CatalogProductAttribute,
+  type NewCatalogProductAttribute,
+} from "../../modules/catalog/schema";

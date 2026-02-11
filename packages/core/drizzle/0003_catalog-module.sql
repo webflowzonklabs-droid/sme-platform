@@ -158,4 +158,10 @@ CREATE POLICY tenant_isolation_catalog_product_subcategories ON "catalog_product
 CREATE POLICY tenant_isolation_catalog_product_attributes ON "catalog_product_attributes"
   USING (product_id IN (
     SELECT id FROM catalog_products WHERE tenant_id = current_setting('app.current_tenant_id', true)::UUID
-  ));
+  ));--> statement-breakpoint
+
+-- H3: Unique slug per tenant constraints
+CREATE UNIQUE INDEX IF NOT EXISTS "uq_catalog_categories_tenant_slug" ON "catalog_categories" ("tenant_id", "slug") WHERE "deleted_at" IS NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "uq_catalog_subcategories_tenant_slug" ON "catalog_subcategories" ("tenant_id", "slug") WHERE "deleted_at" IS NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "uq_catalog_products_tenant_slug" ON "catalog_products" ("tenant_id", "slug") WHERE "deleted_at" IS NULL;--> statement-breakpoint
+CREATE UNIQUE INDEX IF NOT EXISTS "uq_catalog_attribute_definitions_tenant_slug" ON "catalog_attribute_definitions" ("tenant_id", "slug");

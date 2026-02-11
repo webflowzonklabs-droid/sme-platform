@@ -1,5 +1,5 @@
 import { TRPCError } from "@trpc/server";
-import { eq, and, isNull, desc, asc, ilike, sql, inArray, gt, count } from "drizzle-orm";
+import { eq, and, isNull, desc, asc, ilike, sql, inArray, gt, count, ne } from "drizzle-orm";
 import { z } from "zod";
 import { router, tenantProcedure } from "../../trpc/procedures";
 import { requirePermission, requireModule } from "../../trpc/procedures";
@@ -31,11 +31,117 @@ function slugify(text: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
+const PRICE_REGEX = /^\d{1,10}(\.\d{1,2})?$/;
+
 const stockStatuses = ["in_stock", "out_of_stock", "pre_order", "reserved"] as const;
 const attributeTypes = ["text", "number", "boolean", "select"] as const;
 
 // Base procedure — requires catalog module enabled
 const catalogProcedure = tenantProcedure.use(requireModule("catalog"));
+
+// ============================================
+// Slug uniqueness helper
+// ============================================
+async function ensureSlugUnique(
+  db: any,
+  table: any,
+  tenantId: string,
+  slug: string,
+  excludeId?: string,
+  useSoftDelete = true,
+) {
+  const conditions: any[] = [
+    eq(table.tenantId, tenantId),
+    eq(table.slug, slug),
+  ];
+  if (useSoftDelete) {
+    conditions.push(isNull(table.deletedAt));
+  }
+  if (excludeId) {
+    conditions.push(ne(table.id, excludeId));
+  }
+  const [existing] = await db.select({ id: table.id }).from(table).where(and(...conditions)).limit(1);
+  if (existing) {
+    throw new TRPCError({ code: "CONFLICT", message: `A record with slug "${slug}" already exists` });
+  }
+}
+
+// ============================================
+// Attribute value validation helper
+// ============================================
+async function validateAttributeValues(
+  db: any,
+  tenantId: string,
+  values: { attributeDefinitionId: string; value: string }[],
+) {
+  if (values.length === 0) return;
+
+  const defIds = values.map((v) => v.attributeDefinitionId);
+  const defs = await db
+    .select({
+      id: catalogAttributeDefinitions.id,
+      name: catalogAttributeDefinitions.name,
+      type: catalogAttributeDefinitions.type,
+      options: catalogAttributeDefinitions.options,
+    })
+    .from(catalogAttributeDefinitions)
+    .where(
+      and(
+        inArray(catalogAttributeDefinitions.id, defIds),
+        eq(catalogAttributeDefinitions.tenantId, tenantId),
+      ),
+    );
+
+  const defMap = new Map<string, { id: string; name: string; type: string; options: string[] | null }>(
+    defs.map((d: any) => [d.id, d]),
+  );
+
+  for (const v of values) {
+    const def = defMap.get(v.attributeDefinitionId);
+    if (!def) {
+      throw new TRPCError({
+        code: "BAD_REQUEST",
+        message: `Attribute definition "${v.attributeDefinitionId}" not found`,
+      });
+    }
+    switch (def.type) {
+      case "text":
+        if (v.value.length > 1000) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Attribute "${def.name}" value exceeds 1000 characters`,
+          });
+        }
+        break;
+      case "number":
+        if (isNaN(Number(v.value)) || v.value.trim() === "") {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Attribute "${def.name}" must be a valid number`,
+          });
+        }
+        break;
+      case "boolean":
+        if (v.value !== "true" && v.value !== "false") {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Attribute "${def.name}" must be "true" or "false"`,
+          });
+        }
+        break;
+      case "select": {
+        const options: string[] = def.options ?? [];
+        if (!options.includes(v.value)) {
+          throw new TRPCError({
+            code: "BAD_REQUEST",
+            message: `Attribute "${def.name}" must be one of: ${options.join(", ")}`,
+          });
+        }
+        break;
+      }
+    }
+  }
+}
 
 // ============================================
 // Categories Router
@@ -105,6 +211,10 @@ const categoriesRouter = router({
     }))
     .mutation(async ({ input, ctx }) => {
       const slug = input.slug || slugify(input.name);
+
+      // H3: Slug uniqueness
+      await ensureSlugUnique(ctx.db, catalogCategories, ctx.tenantId, slug);
+
       const [cat] = await ctx.db
         .insert(catalogCategories)
         .values({
@@ -150,6 +260,11 @@ const categoriesRouter = router({
       if (updates.description !== undefined) updateData.description = updates.description;
       if (updates.sortOrder !== undefined) updateData.sortOrder = updates.sortOrder;
       if (updates.isActive !== undefined) updateData.isActive = updates.isActive;
+
+      // H3: Slug uniqueness on update
+      if (updates.slug !== undefined) {
+        await ensureSlugUnique(ctx.db, catalogCategories, ctx.tenantId, updates.slug, id);
+      }
 
       const [updated] = await ctx.db
         .update(catalogCategories)
@@ -207,7 +322,7 @@ const categoriesRouter = router({
   reorder: catalogProcedure
     .use(requirePermission("catalog:categories:write"))
     .input(z.object({
-      items: z.array(z.object({ id: z.string().uuid(), sortOrder: z.number().int() })),
+      items: z.array(z.object({ id: z.string().uuid(), sortOrder: z.number().int() })).max(500),
     }))
     .mutation(async ({ input, ctx }) => {
       for (const item of input.items) {
@@ -269,6 +384,10 @@ const subcategoriesRouter = router({
       if (!cat) throw new TRPCError({ code: "NOT_FOUND", message: "Category not found" });
 
       const slug = input.slug || slugify(input.name);
+
+      // H3: Slug uniqueness
+      await ensureSlugUnique(ctx.db, catalogSubcategories, ctx.tenantId, slug);
+
       const [sub] = await ctx.db
         .insert(catalogSubcategories)
         .values({
@@ -315,6 +434,11 @@ const subcategoriesRouter = router({
       if (updates.description !== undefined) updateData.description = updates.description;
       if (updates.sortOrder !== undefined) updateData.sortOrder = updates.sortOrder;
       if (updates.isActive !== undefined) updateData.isActive = updates.isActive;
+
+      // H3: Slug uniqueness on update
+      if (updates.slug !== undefined) {
+        await ensureSlugUnique(ctx.db, catalogSubcategories, ctx.tenantId, updates.slug, id);
+      }
 
       const [updated] = await ctx.db
         .update(catalogSubcategories)
@@ -372,7 +496,7 @@ const subcategoriesRouter = router({
   reorder: catalogProcedure
     .use(requirePermission("catalog:categories:write"))
     .input(z.object({
-      items: z.array(z.object({ id: z.string().uuid(), sortOrder: z.number().int() })),
+      items: z.array(z.object({ id: z.string().uuid(), sortOrder: z.number().int() })).max(500),
     }))
     .mutation(async ({ input, ctx }) => {
       for (const item of input.items) {
@@ -428,8 +552,20 @@ const productsRouter = router({
         conditions.push(gt(catalogProducts.id, input.cursor));
       }
 
-      // If filtering by subcategory, join through the join table
+      // If filtering by subcategory, verify it belongs to tenant first (H2)
       if (input.subcategoryId) {
+        const [sub] = await ctx.db
+          .select({ id: catalogSubcategories.id })
+          .from(catalogSubcategories)
+          .where(and(
+            eq(catalogSubcategories.id, input.subcategoryId),
+            eq(catalogSubcategories.tenantId, ctx.tenantId),
+            isNull(catalogSubcategories.deletedAt)
+          ))
+          .limit(1);
+
+        if (!sub) throw new TRPCError({ code: "NOT_FOUND", message: "Subcategory not found" });
+
         const productIds = await ctx.db
           .select({ productId: catalogProductSubcategories.productId })
           .from(catalogProductSubcategories)
@@ -466,12 +602,22 @@ const productsRouter = router({
 
       if (!product) throw new TRPCError({ code: "NOT_FOUND", message: "Product not found" });
 
-      // Fetch related data in parallel
+      // Fetch related data in parallel (M3: add tenant filters)
       const [photos, subcategoryLinks, attributes] = await Promise.all([
         ctx.db.select().from(catalogProductPhotos)
-          .where(eq(catalogProductPhotos.productId, product.id))
+          .where(and(
+            eq(catalogProductPhotos.productId, product.id),
+            eq(catalogProductPhotos.tenantId, ctx.tenantId),
+          ))
           .orderBy(asc(catalogProductPhotos.sortOrder)),
         ctx.db.select().from(catalogProductSubcategories)
+          .innerJoin(
+            catalogSubcategories,
+            and(
+              eq(catalogProductSubcategories.subcategoryId, catalogSubcategories.id),
+              eq(catalogSubcategories.tenantId, ctx.tenantId),
+            )
+          )
           .where(eq(catalogProductSubcategories.productId, product.id)),
         ctx.db.select({
           id: catalogProductAttributes.id,
@@ -486,7 +632,10 @@ const productsRouter = router({
           .from(catalogProductAttributes)
           .innerJoin(
             catalogAttributeDefinitions,
-            eq(catalogProductAttributes.attributeDefinitionId, catalogAttributeDefinitions.id)
+            and(
+              eq(catalogProductAttributes.attributeDefinitionId, catalogAttributeDefinitions.id),
+              eq(catalogAttributeDefinitions.tenantId, ctx.tenantId),
+            )
           )
           .where(eq(catalogProductAttributes.productId, product.id)),
       ]);
@@ -494,7 +643,7 @@ const productsRouter = router({
       return {
         ...product,
         photos,
-        subcategoryIds: subcategoryLinks.map((l) => l.subcategoryId),
+        subcategoryIds: subcategoryLinks.map((l) => l.catalog_product_subcategories.subcategoryId),
         attributes,
       };
     }),
@@ -506,8 +655,8 @@ const productsRouter = router({
       slug: z.string().min(1).max(300).optional(),
       brand: z.string().max(200).optional(),
       description: z.string().optional(),
-      price: z.string().optional(), // numeric as string
-      currency: z.string().length(3).optional(),
+      price: z.string().regex(PRICE_REGEX, "Price must be a valid non-negative number (up to 10 digits, 2 decimal places)").optional(),
+      currency: z.string().regex(/^[A-Z]{3}$/).optional(),
       categoryId: z.string().uuid(),
       stockStatus: z.enum(stockStatuses).optional(),
       isFeatured: z.boolean().optional(),
@@ -532,6 +681,14 @@ const productsRouter = router({
       if (!cat) throw new TRPCError({ code: "NOT_FOUND", message: "Category not found" });
 
       const slug = input.slug || slugify(input.name);
+
+      // H3: Slug uniqueness
+      await ensureSlugUnique(ctx.db, catalogProducts, ctx.tenantId, slug);
+
+      // H4: Validate attribute values against types
+      if (input.attributes && input.attributes.length > 0) {
+        await validateAttributeValues(ctx.db, ctx.tenantId, input.attributes);
+      }
 
       const [product] = await ctx.db
         .insert(catalogProducts)
@@ -564,7 +721,7 @@ const productsRouter = router({
             eq(catalogSubcategories.tenantId, ctx.tenantId),
             isNull(catalogSubcategories.deletedAt)
           ));
-        const validIds = new Set(validSubs.map((s) => s.id));
+        const validIds = new Set(validSubs.map((s: any) => s.id));
 
         const links = input.subcategoryIds
           .filter((id) => validIds.has(id))
@@ -575,9 +732,8 @@ const productsRouter = router({
         }
       }
 
-      // Insert attribute values
+      // Insert attribute values (already validated above)
       if (input.attributes && input.attributes.length > 0) {
-        // Verify all attribute definitions belong to tenant
         const defIds = input.attributes.map((a) => a.attributeDefinitionId);
         const validDefs = await ctx.db.select({ id: catalogAttributeDefinitions.id })
           .from(catalogAttributeDefinitions)
@@ -585,7 +741,7 @@ const productsRouter = router({
             inArray(catalogAttributeDefinitions.id, defIds),
             eq(catalogAttributeDefinitions.tenantId, ctx.tenantId)
           ));
-        const validDefIds = new Set(validDefs.map((d) => d.id));
+        const validDefIds = new Set(validDefs.map((d: any) => d.id));
 
         const attrs = input.attributes
           .filter((a) => validDefIds.has(a.attributeDefinitionId))
@@ -621,8 +777,8 @@ const productsRouter = router({
       slug: z.string().min(1).max(300).optional(),
       brand: z.string().max(200).nullable().optional(),
       description: z.string().nullable().optional(),
-      price: z.string().nullable().optional(),
-      currency: z.string().length(3).optional(),
+      price: z.string().regex(PRICE_REGEX, "Price must be a valid non-negative number (up to 10 digits, 2 decimal places)").nullable().optional(),
+      currency: z.string().regex(/^[A-Z]{3}$/).optional(),
       categoryId: z.string().uuid().optional(),
       stockStatus: z.enum(stockStatuses).optional(),
       isFeatured: z.boolean().optional(),
@@ -660,6 +816,16 @@ const productsRouter = router({
         if (!cat) throw new TRPCError({ code: "NOT_FOUND", message: "Category not found" });
       }
 
+      // H3: Slug uniqueness on update
+      if (updates.slug !== undefined) {
+        await ensureSlugUnique(ctx.db, catalogProducts, ctx.tenantId, updates.slug, id);
+      }
+
+      // H4: Validate attribute values against types
+      if (attributes && attributes.length > 0) {
+        await validateAttributeValues(ctx.db, ctx.tenantId, attributes);
+      }
+
       const updateData: Record<string, unknown> = { updatedAt: new Date() };
       for (const [key, value] of Object.entries(updates)) {
         if (value !== undefined) updateData[key] = value;
@@ -690,7 +856,7 @@ const productsRouter = router({
               eq(catalogSubcategories.tenantId, ctx.tenantId),
               isNull(catalogSubcategories.deletedAt)
             ));
-          const validIds = new Set(validSubs.map((s) => s.id));
+          const validIds = new Set(validSubs.map((s: any) => s.id));
 
           const links = subcategoryIds
             .filter((sid) => validIds.has(sid))
@@ -702,7 +868,7 @@ const productsRouter = router({
         }
       }
 
-      // Replace attribute values if provided
+      // Replace attribute values if provided (already validated above)
       if (attributes !== undefined) {
         await ctx.db.delete(catalogProductAttributes)
           .where(eq(catalogProductAttributes.productId, id));
@@ -715,7 +881,7 @@ const productsRouter = router({
               inArray(catalogAttributeDefinitions.id, defIds),
               eq(catalogAttributeDefinitions.tenantId, ctx.tenantId)
             ));
-          const validDefIds = new Set(validDefs.map((d) => d.id));
+          const validDefIds = new Set(validDefs.map((d: any) => d.id));
 
           const attrs = attributes
             .filter((a) => validDefIds.has(a.attributeDefinitionId))
@@ -781,7 +947,7 @@ const photosRouter = router({
     .use(requirePermission("catalog:products:write"))
     .input(z.object({
       productId: z.string().uuid(),
-      url: z.string().url().max(2000),
+      url: z.string().url().max(2000).refine(url => url.startsWith('https://'), 'URL must use HTTPS'),
       altText: z.string().max(300).optional(),
       sortOrder: z.number().int().optional(),
       isPrimary: z.boolean().optional(),
@@ -860,7 +1026,7 @@ const photosRouter = router({
   reorder: catalogProcedure
     .use(requirePermission("catalog:products:write"))
     .input(z.object({
-      items: z.array(z.object({ id: z.string().uuid(), sortOrder: z.number().int() })),
+      items: z.array(z.object({ id: z.string().uuid(), sortOrder: z.number().int() })).max(500),
     }))
     .mutation(async ({ input, ctx }) => {
       for (const item of input.items) {
@@ -931,6 +1097,9 @@ const attributesRouter = router({
     .mutation(async ({ input, ctx }) => {
       const slug = input.slug || slugify(input.name);
 
+      // H3: Slug uniqueness (attribute definitions don't have soft delete)
+      await ensureSlugUnique(ctx.db, catalogAttributeDefinitions, ctx.tenantId, slug, undefined, false);
+
       const [def] = await ctx.db
         .insert(catalogAttributeDefinitions)
         .values({
@@ -980,6 +1149,11 @@ const attributesRouter = router({
       if (updates.isRequired !== undefined) updateData.isRequired = updates.isRequired;
       if (updates.sortOrder !== undefined) updateData.sortOrder = updates.sortOrder;
 
+      // H3: Slug uniqueness on update (no soft delete on this table)
+      if (updates.slug !== undefined) {
+        await ensureSlugUnique(ctx.db, catalogAttributeDefinitions, ctx.tenantId, updates.slug, id, false);
+      }
+
       const [updated] = await ctx.db
         .update(catalogAttributeDefinitions)
         .set(updateData)
@@ -1008,10 +1182,7 @@ const attributesRouter = router({
     .use(requirePermission("catalog:attributes:delete"))
     .input(z.object({ id: z.string().uuid() }))
     .mutation(async ({ input, ctx }) => {
-      // Delete attribute values first, then the definition
-      await ctx.db.delete(catalogProductAttributes)
-        .where(eq(catalogProductAttributes.attributeDefinitionId, input.id));
-
+      // C1: Verify ownership FIRST, then delete (FK CASCADE handles attribute values)
       const [deleted] = await ctx.db
         .delete(catalogAttributeDefinitions)
         .where(and(
@@ -1054,33 +1225,22 @@ const attributesRouter = router({
         )).limit(1);
       if (!product) throw new TRPCError({ code: "NOT_FOUND", message: "Product not found" });
 
-      // Verify all attribute definitions belong to tenant
-      const defIds = input.values.map((v) => v.attributeDefinitionId);
-      if (defIds.length > 0) {
-        const validDefs = await ctx.db.select({ id: catalogAttributeDefinitions.id })
-          .from(catalogAttributeDefinitions)
-          .where(and(
-            inArray(catalogAttributeDefinitions.id, defIds),
-            eq(catalogAttributeDefinitions.tenantId, ctx.tenantId)
-          ));
-        const validDefIds = new Set(validDefs.map((d) => d.id));
+      // H4: Validate attribute values against definition types
+      if (input.values.length > 0) {
+        await validateAttributeValues(ctx.db, ctx.tenantId, input.values);
 
         // Remove existing values for this product
         await ctx.db.delete(catalogProductAttributes)
           .where(eq(catalogProductAttributes.productId, input.productId));
 
-        // Insert new values
-        const attrs = input.values
-          .filter((v) => validDefIds.has(v.attributeDefinitionId))
-          .map((v) => ({
-            productId: input.productId,
-            attributeDefinitionId: v.attributeDefinitionId,
-            value: v.value,
-          }));
+        // Insert new values (validateAttributeValues already confirmed they belong to tenant)
+        const attrs = input.values.map((v) => ({
+          productId: input.productId,
+          attributeDefinitionId: v.attributeDefinitionId,
+          value: v.value,
+        }));
 
-        if (attrs.length > 0) {
-          await ctx.db.insert(catalogProductAttributes).values(attrs);
-        }
+        await ctx.db.insert(catalogProductAttributes).values(attrs);
       } else {
         // Empty values array = clear all attributes
         await ctx.db.delete(catalogProductAttributes)

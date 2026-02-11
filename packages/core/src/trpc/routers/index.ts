@@ -7,6 +7,7 @@ import { modulesRouter } from "./modules";
 import { auditRouter } from "./audit";
 import { adminRouter } from "./admin";
 import { notesRouter } from "../../modules/notes/router";
+import { catalogRouter } from "../../modules/catalog/router";
 
 // ============================================
 // Root App Router — all core routes + module routes
@@ -30,6 +31,7 @@ export const appRouter = router({
   // Module routes (statically imported for type safety, 
   // enforced at runtime via requireModule() middleware)
   notes: notesRouter,
+  catalog: catalogRouter,
 });
 
 export type AppRouter = typeof appRouter;

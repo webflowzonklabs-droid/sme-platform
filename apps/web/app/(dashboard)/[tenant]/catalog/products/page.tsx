@@ -123,7 +123,7 @@ export default function ProductsPage() {
                 <CardContent>
                   <div className="flex items-center gap-2 mb-2">
                     {product.brand && <span className="text-sm text-muted-foreground">{product.brand}</span>}
-                    <Badge variant={status.variant}>{status.label}</Badge>
+                    <Badge variant={status.variant as "default" | "secondary" | "destructive" | "outline"}>{status.label}</Badge>
                     {product.isFeatured && <Badge variant="secondary">Featured</Badge>}
                     {product.isNew && <Badge variant="outline">New</Badge>}
                   </div>

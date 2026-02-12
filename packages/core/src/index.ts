@@ -36,7 +36,7 @@ export {
 } from "./rbac/index";
 
 // Tenant
-export { withTenant, setTenantContext, getTenantSlugById } from "./tenant/index";
+export { getTenantSlugById } from "./tenant/index";
 
 // Modules
 export {

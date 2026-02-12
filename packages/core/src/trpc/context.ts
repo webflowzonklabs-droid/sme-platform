@@ -1,6 +1,6 @@
 import type { SessionValidationResult } from "../auth/session";
 import type { Database } from "../db/index";
-import { adminDb } from "../db/index";
+import { db } from "../db/index";
 
 // ============================================
 // tRPC Context — created per-request
@@ -9,10 +9,7 @@ import { adminDb } from "../db/index";
 export interface Context {
   /** Session data (null if not authenticated) */
   session: SessionValidationResult | null;
-  /** Database connection for this request.
-   *  - Default: adminDb (superuser, for auth/admin operations)
-   *  - Tenant procedures: overridden with RLS-enforced transaction
-   */
+  /** Database connection (single pool, no RLS) */
   db: Database;
   /** Client IP address */
   ipAddress?: string;
@@ -24,7 +21,6 @@ export interface Context {
 
 /**
  * Create the tRPC context for a request.
- * Called by the tRPC handler in the Next.js app.
  */
 export function createContext(params: {
   session: SessionValidationResult | null;
@@ -34,7 +30,7 @@ export function createContext(params: {
 }): Context {
   return {
     session: params.session,
-    db: adminDb, // Default to admin connection (auth, session, admin ops)
+    db,
     ipAddress: params.ipAddress,
     userAgent: params.userAgent,
     trpcSource: params.trpcSource,

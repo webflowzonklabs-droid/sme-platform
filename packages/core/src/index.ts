@@ -56,6 +56,7 @@ export type { AuditLogEntry } from "./audit/index";
 
 // Register built-in modules (import for side effect)
 export { notesModule } from "./modules/notes/index";
+export { catalogModule } from "./modules/catalog/index";
 
 // tRPC
 export {

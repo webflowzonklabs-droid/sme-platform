@@ -19,6 +19,7 @@ import { cn } from "@sme/ui";
 import {
   LayoutDashboard,
   Settings,
+  Settings2,
   Users,
   Shield,
   Package,
@@ -28,6 +29,7 @@ import {
   ChevronDown,
   Building2,
   StickyNote,
+  FolderTree,
 } from "lucide-react";
 import { trpc } from "@/trpc/client";
 import { clearSessionCookie } from "@/lib/auth";
@@ -331,10 +333,12 @@ function getIcon(name: string) {
   const icons: Record<string, typeof LayoutDashboard> = {
     LayoutDashboard,
     Settings,
+    Settings2,
     Users,
     Shield,
     Package,
     StickyNote,
+    FolderTree,
   };
   return icons[name] ?? Package;
 }

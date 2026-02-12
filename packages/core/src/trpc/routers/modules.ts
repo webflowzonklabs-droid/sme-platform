@@ -1,6 +1,7 @@
 import { TRPCError } from "@trpc/server";
 import {
   router,
+  protectedProcedure,
   tenantProcedure,
   superAdminProcedure,
 } from "../procedures";
@@ -22,7 +23,7 @@ export const modulesRouter = router({
   /**
    * List all available modules.
    */
-  available: tenantProcedure.query(async () => {
+  available: protectedProcedure.query(async () => {
     const registry = getModuleRegistry();
     return Array.from(registry.values()).map((mod) => ({
       id: mod.id,

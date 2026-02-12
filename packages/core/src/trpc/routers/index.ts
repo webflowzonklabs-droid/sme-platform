@@ -9,6 +9,11 @@ import { adminRouter } from "./admin";
 import { notesRouter } from "../../modules/notes/router";
 import { catalogRouter } from "../../modules/catalog/router";
 
+// Side-effect imports: register modules in the in-memory registry
+// so getModule() / getModuleRegistry() return navigation, permissions, etc.
+import "../../modules/notes/index";
+import "../../modules/catalog/index";
+
 // ============================================
 // Root App Router — all core routes + module routes
 // ============================================

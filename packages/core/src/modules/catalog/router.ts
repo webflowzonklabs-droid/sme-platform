@@ -164,7 +164,6 @@ const categoriesRouter = router({
           productCount: sql<number>`(
             SELECT count(*)::int FROM catalog_products
             WHERE category_id = ${catalogCategories.id}
-            AND tenant_id = ${ctx.tenantId}
             AND deleted_at IS NULL
           )`.as("product_count"),
         })

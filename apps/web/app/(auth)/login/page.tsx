@@ -45,8 +45,10 @@ export default function LoginPage() {
       }
 
       // Cookie is already set by the API route response.
-      // Navigate based on tenant state.
-      if (data.tenantId) {
+      // Navigate based on user type and tenant state.
+      if (data.isSuperAdmin) {
+        router.push("/admin");
+      } else if (data.tenantId) {
         router.push("/select-tenant");
       } else if (data.hasMultipleTenants) {
         router.push("/select-tenant");

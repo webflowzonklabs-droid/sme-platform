@@ -31,13 +31,17 @@ export default function SelectTenantPage() {
   });
 
   // Auto-switch to sole tenant, but NOT for super admins who need
-  // to see the Platform Admin card and Create Tenant button
+  // to see the Platform Admin card and Create Tenant button.
+  // Wait for BOTH tenants and me to load before deciding (prevents race condition
+  // where tenants loads first and auto-redirects before we know if user is super admin).
+  const meLoaded = me !== undefined;
   useEffect(() => {
-    if (tenants?.length === 1 && !autoSwitchDone.current && !me?.user?.isSuperAdmin) {
+    if (!meLoaded || !tenants) return; // wait for both queries
+    if (tenants.length === 1 && !autoSwitchDone.current && !me?.user?.isSuperAdmin) {
       autoSwitchDone.current = true;
       switchTenant.mutate({ tenantId: tenants[0]!.tenantId });
     }
-  }, [tenants, me]);
+  }, [tenants, me, meLoaded]);
 
   if (isLoading) {
     return (

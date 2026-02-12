@@ -11,12 +11,13 @@ import {
   Button,
   Badge,
 } from "@sme/ui";
-import { Building2, Plus } from "lucide-react";
+import { Building2, Plus, Shield } from "lucide-react";
 import { trpc } from "@/trpc/client";
 
 export default function SelectTenantPage() {
   const router = useRouter();
   const { data: tenants, isLoading } = trpc.auth.myTenants.useQuery();
+  const { data: me } = trpc.auth.me.useQuery();
   const autoSwitchDone = useRef(false);
   const switchTenant = trpc.auth.switchTenant.useMutation({
     onSuccess: (data) => {
@@ -86,6 +87,23 @@ export default function SelectTenantPage() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-2">
+        {me?.user?.isSuperAdmin && (
+          <button
+            onClick={() => router.push("/admin")}
+            className="w-full flex items-center gap-3 p-4 rounded-lg border border-primary/30 bg-primary/5 hover:bg-primary/10 transition-colors text-left mb-2"
+          >
+            <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-primary/20">
+              <Shield className="h-5 w-5 text-primary" />
+            </div>
+            <div className="flex-1">
+              <div className="font-medium">Platform Admin</div>
+              <div className="text-sm text-muted-foreground">
+                Manage tenants, modules & users
+              </div>
+            </div>
+            <Badge variant="default">Admin</Badge>
+          </button>
+        )}
         {tenants.map((tenant) => (
           <button
             key={tenant.tenantId}

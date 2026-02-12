@@ -20,6 +20,7 @@ export interface LoginResult {
   user: { id: string; email: string; fullName: string };
   tenantId: string | null;
   hasMultipleTenants: boolean;
+  isSuperAdmin: boolean;
   expiresAt: Date;
 }
 
@@ -129,6 +130,7 @@ export async function loginWithPassword(params: {
     user: { id: user.id, email: user.email, fullName: user.fullName },
     tenantId,
     hasMultipleTenants: memberships.length > 1,
+    isSuperAdmin: user.isSuperAdmin,
     expiresAt,
   };
 }

@@ -41,6 +41,7 @@ export async function POST(req: NextRequest) {
       user: result.user,
       tenantId: result.tenantId,
       hasMultipleTenants: result.hasMultipleTenants,
+      isSuperAdmin: result.isSuperAdmin,
       expiresAt: result.expiresAt,
     });
 

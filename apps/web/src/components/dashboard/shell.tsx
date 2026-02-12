@@ -39,6 +39,7 @@ interface DashboardShellProps {
     email: string;
     fullName: string;
     avatarUrl: string | null;
+    isSuperAdmin: boolean;
   };
   membership: {
     id: string;
@@ -276,6 +277,14 @@ export function DashboardShell({
                   <div className="text-sm">{user.email}</div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
+                {user.isSuperAdmin && (
+                  <DropdownMenuItem asChild>
+                    <Link href="/admin">
+                      <Shield className="mr-2 h-4 w-4" />
+                      Platform Admin
+                    </Link>
+                  </DropdownMenuItem>
+                )}
                 <DropdownMenuItem asChild>
                   <Link href="/select-tenant">
                     <Building2 className="mr-2 h-4 w-4" />

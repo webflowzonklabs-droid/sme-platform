@@ -150,23 +150,9 @@ const categoriesRouter = router({
   list: catalogProcedure
     .use(requirePermission("catalog:categories:read"))
     .query(async ({ ctx }) => {
+      // Get categories
       const cats = await ctx.db
-        .select({
-          id: catalogCategories.id,
-          tenantId: catalogCategories.tenantId,
-          name: catalogCategories.name,
-          slug: catalogCategories.slug,
-          description: catalogCategories.description,
-          sortOrder: catalogCategories.sortOrder,
-          isActive: catalogCategories.isActive,
-          createdAt: catalogCategories.createdAt,
-          updatedAt: catalogCategories.updatedAt,
-          productCount: sql<number>`(
-            SELECT count(*)::int FROM catalog_products
-            WHERE category_id = ${catalogCategories.id}
-            AND deleted_at IS NULL
-          )`.as("product_count"),
-        })
+        .select()
         .from(catalogCategories)
         .where(
           and(
@@ -176,7 +162,27 @@ const categoriesRouter = router({
         )
         .orderBy(asc(catalogCategories.sortOrder), asc(catalogCategories.name));
 
-      return cats;
+      // Get product counts per category in one query
+      const counts = await ctx.db
+        .select({
+          categoryId: catalogProducts.categoryId,
+          count: count(),
+        })
+        .from(catalogProducts)
+        .where(
+          and(
+            eq(catalogProducts.tenantId, ctx.tenantId),
+            isNull(catalogProducts.deletedAt)
+          )
+        )
+        .groupBy(catalogProducts.categoryId);
+
+      const countMap = new Map(counts.map((c) => [c.categoryId, c.count]));
+
+      return cats.map((cat) => ({
+        ...cat,
+        productCount: countMap.get(cat.id) ?? 0,
+      }));
     }),
 
   get: catalogProcedure

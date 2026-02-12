@@ -325,8 +325,10 @@ export const authRouter = router({
           )
         );
 
+      // Auto-select tenant if user has exactly one — but NOT for super admins,
+      // who need to see the select-tenant page with Platform Admin access
       const tenantId =
-        memberships.length === 1 ? memberships[0]!.tenantId : null;
+        memberships.length === 1 && !user.isSuperAdmin ? memberships[0]!.tenantId : null;
 
       // Create session
       const { token, expiresAt } = await createSession({

@@ -254,22 +254,22 @@ function CreateRecipeDialog({
           </div>
           <div className="space-y-2">
             <Label>Yield Loss %</Label>
-            <Input value={yieldLossPct} onChange={(e) => setYieldLossPct(e.target.value)} type="number" step="0.01" />
+            <Input value={yieldLossPct} onChange={(e) => setYieldLossPct(e.target.value)} type="number" step="0.01" min="0" />
           </div>
           {type === "final" && (
             <>
               <div className="space-y-2">
                 <Label>Selling Price</Label>
-                <Input value={sellingPrice} onChange={(e) => setSellingPrice(e.target.value)} placeholder="0.00" type="number" step="0.01" />
+                <Input value={sellingPrice} onChange={(e) => setSellingPrice(e.target.value)} placeholder="0.00" type="number" step="0.01" min="0" />
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>VAT %</Label>
-                  <Input value={vatPct} onChange={(e) => setVatPct(e.target.value)} type="number" step="0.01" />
+                  <Input value={vatPct} onChange={(e) => setVatPct(e.target.value)} type="number" step="0.01" min="0" />
                 </div>
                 <div className="space-y-2">
                   <Label>Discount %</Label>
-                  <Input value={discountPct} onChange={(e) => setDiscountPct(e.target.value)} type="number" step="0.01" />
+                  <Input value={discountPct} onChange={(e) => setDiscountPct(e.target.value)} type="number" step="0.01" min="0" />
                 </div>
               </div>
             </>

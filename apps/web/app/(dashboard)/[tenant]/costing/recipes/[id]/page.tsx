@@ -241,21 +241,21 @@ export default function RecipeDetailPage() {
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="space-y-2">
                 <Label>Yield Loss %</Label>
-                <Input value={editYieldLoss} onChange={(e) => setEditYieldLoss(e.target.value)} type="number" step="0.01" />
+                <Input value={editYieldLoss} onChange={(e) => setEditYieldLoss(e.target.value)} type="number" step="0.01" min="0" />
               </div>
               {isFinal && (
                 <>
                   <div className="space-y-2">
                     <Label>Selling Price</Label>
-                    <Input value={editSellingPrice} onChange={(e) => setEditSellingPrice(e.target.value)} type="number" step="0.01" />
+                    <Input value={editSellingPrice} onChange={(e) => setEditSellingPrice(e.target.value)} type="number" step="0.01" min="0" />
                   </div>
                   <div className="space-y-2">
                     <Label>VAT %</Label>
-                    <Input value={editVatPct} onChange={(e) => setEditVatPct(e.target.value)} type="number" step="0.01" />
+                    <Input value={editVatPct} onChange={(e) => setEditVatPct(e.target.value)} type="number" step="0.01" min="0" />
                   </div>
                   <div className="space-y-2">
                     <Label>Discount %</Label>
-                    <Input value={editDiscountPct} onChange={(e) => setEditDiscountPct(e.target.value)} type="number" step="0.01" />
+                    <Input value={editDiscountPct} onChange={(e) => setEditDiscountPct(e.target.value)} type="number" step="0.01" min="0" />
                   </div>
                 </>
               )}
@@ -303,7 +303,11 @@ export default function RecipeDetailPage() {
                         variant="ghost"
                         size="icon"
                         className="h-8 w-8 text-destructive"
-                        onClick={() => removeIngredient.mutate({ id: ing.id, recipeId })}
+                        onClick={() => {
+                          if (window.confirm("Remove this ingredient?")) {
+                            removeIngredient.mutate({ id: ing.id, recipeId });
+                          }
+                        }}
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -443,7 +447,7 @@ function AddIngredientDialog({
           </div>
           <div className="space-y-2">
             <Label>Amount (grams) *</Label>
-            <Input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" type="number" step="0.01" />
+            <Input value={amount} onChange={(e) => setAmount(e.target.value)} placeholder="0.00" type="number" step="0.01" min="0" />
           </div>
         </div>
         <DialogFooter>

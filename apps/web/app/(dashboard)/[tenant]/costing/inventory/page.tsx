@@ -382,7 +382,7 @@ function ItemFormDialog({
           {unitType === "weight" && (
             <div className="space-y-2">
               <Label>Unit Size (grams)</Label>
-              <Input value={unitSizeGrams} onChange={(e) => setUnitSizeGrams(e.target.value)} placeholder="e.g. 1000 for 1kg" type="number" />
+              <Input value={unitSizeGrams} onChange={(e) => setUnitSizeGrams(e.target.value)} placeholder="e.g. 1000 for 1kg" type="number" min="0" step="0.01" />
             </div>
           )}
           <div className="space-y-2">
@@ -425,11 +425,11 @@ function ItemFormDialog({
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>Purchase Price</Label>
-                  <Input value={purchasePrice} onChange={(e) => setPurchasePrice(e.target.value)} placeholder="0.00" type="number" step="0.01" />
+                  <Input value={purchasePrice} onChange={(e) => setPurchasePrice(e.target.value)} placeholder="0.00" type="number" step="0.01" min="0" />
                 </div>
                 <div className="space-y-2">
                   <Label>Price Per Unit</Label>
-                  <Input value={pricePerUnit} onChange={(e) => setPricePerUnit(e.target.value)} placeholder="0.000000" type="number" step="0.000001" />
+                  <Input value={pricePerUnit} onChange={(e) => setPricePerUnit(e.target.value)} placeholder="0.000000" type="number" step="0.000001" min="0" />
                 </div>
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -489,11 +489,11 @@ function UpdatePriceDialog({
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
               <Label>Purchase Price *</Label>
-              <Input value={purchasePrice} onChange={(e) => setPurchasePrice(e.target.value)} placeholder="0.00" type="number" step="0.01" />
+              <Input value={purchasePrice} onChange={(e) => setPurchasePrice(e.target.value)} placeholder="0.00" type="number" step="0.01" min="0" />
             </div>
             <div className="space-y-2">
               <Label>Price Per Unit *</Label>
-              <Input value={pricePerUnit} onChange={(e) => setPricePerUnit(e.target.value)} placeholder="0.000000" type="number" step="0.000001" />
+              <Input value={pricePerUnit} onChange={(e) => setPricePerUnit(e.target.value)} placeholder="0.000000" type="number" step="0.000001" min="0" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">

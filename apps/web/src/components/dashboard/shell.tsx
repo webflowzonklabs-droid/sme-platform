@@ -30,6 +30,8 @@ import {
   Building2,
   StickyNote,
   FolderTree,
+  ChefHat,
+  BarChart3,
 } from "lucide-react";
 import { trpc } from "@/trpc/client";
 import { clearSessionCookie } from "@/lib/auth";
@@ -339,6 +341,8 @@ function getIcon(name: string) {
     Package,
     StickyNote,
     FolderTree,
+    ChefHat,
+    BarChart3,
   };
   return icons[name] ?? Package;
 }

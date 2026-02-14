@@ -125,16 +125,19 @@ export function DashboardShell({
     .toUpperCase()
     .slice(0, 2);
 
-  // Build module nav items from enabled modules
-  const moduleNavItems = (enabledModules ?? []).flatMap((mod) =>
-    mod.navigation
-      .filter((nav) => hasPermission(membership.permissions, nav.permission))
-      .map((nav) => ({
-        label: nav.label,
-        href: nav.href,
-        icon: getIcon(nav.icon),
-      }))
-  );
+  // Build module nav groups from enabled modules
+  const moduleNavGroups = (enabledModules ?? [])
+    .map((mod) => ({
+      moduleName: mod.name,
+      items: mod.navigation
+        .filter((nav) => hasPermission(membership.permissions, nav.permission))
+        .map((nav) => ({
+          label: nav.label,
+          href: nav.href,
+          icon: getIcon(nav.icon),
+        })),
+    }))
+    .filter((group) => group.items.length > 0);
 
   return (
     <div className="min-h-screen bg-background">
@@ -192,31 +195,27 @@ export function DashboardShell({
               );
             })}
 
-            {/* Module nav items */}
-            {moduleNavItems.length > 0 && (
+            {/* Module nav groups */}
+            {moduleNavGroups.length > 0 && (
               <>
                 <Separator className="my-3" />
                 <p className="px-3 text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">
                   Modules
                 </p>
-                {moduleNavItems.map((item) => {
-                  const href = `${basePath}${item.href}`;
-                  const isActive = pathname.startsWith(href);
+                {moduleNavGroups.map((group) => {
+                  const groupActive = group.items.some((item) =>
+                    pathname.startsWith(`${basePath}${item.href}`)
+                  );
                   return (
-                    <Link
-                      key={item.href}
-                      href={href}
-                      className={cn(
-                        "flex items-center gap-3 px-3 py-2 rounded-md text-sm font-medium transition-colors",
-                        isActive
-                          ? "bg-primary text-primary-foreground"
-                          : "text-muted-foreground hover:bg-muted hover:text-foreground"
-                      )}
-                      onClick={() => setSidebarOpen(false)}
-                    >
-                      <item.icon className="h-4 w-4" />
-                      {item.label}
-                    </Link>
+                    <ModuleNavGroup
+                      key={group.moduleName}
+                      label={group.moduleName}
+                      defaultOpen={groupActive}
+                      basePath={basePath}
+                      items={group.items}
+                      pathname={pathname}
+                      onNavigate={() => setSidebarOpen(false)}
+                    />
                   );
                 })}
               </>
@@ -326,6 +325,66 @@ export function DashboardShell({
         {/* Page content */}
         <main className="p-4 md:p-6 lg:p-8">{children}</main>
       </div>
+    </div>
+  );
+}
+
+/** Collapsible module nav group */
+function ModuleNavGroup({
+  label,
+  defaultOpen,
+  basePath,
+  items,
+  pathname,
+  onNavigate,
+}: {
+  label: string;
+  defaultOpen: boolean;
+  basePath: string;
+  items: { label: string; href: string; icon: typeof LayoutDashboard }[];
+  pathname: string;
+  onNavigate: () => void;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+
+  return (
+    <div className="mb-1">
+      <button
+        onClick={() => setOpen(!open)}
+        className="flex items-center justify-between w-full px-3 py-2 rounded-md text-sm font-medium text-muted-foreground hover:bg-muted hover:text-foreground transition-colors"
+      >
+        <span>{label}</span>
+        <ChevronDown
+          className={cn(
+            "h-4 w-4 transition-transform",
+            open ? "" : "-rotate-90"
+          )}
+        />
+      </button>
+      {open && (
+        <div className="ml-3 space-y-0.5">
+          {items.map((item) => {
+            const href = `${basePath}${item.href}`;
+            const isActive = pathname.startsWith(href);
+            return (
+              <Link
+                key={item.href}
+                href={href}
+                className={cn(
+                  "flex items-center gap-3 px-3 py-1.5 rounded-md text-sm transition-colors",
+                  isActive
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                )}
+                onClick={onNavigate}
+              >
+                <item.icon className="h-3.5 w-3.5" />
+                {item.label}
+              </Link>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }

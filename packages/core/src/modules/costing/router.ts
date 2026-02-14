@@ -1,6 +1,7 @@
 import { TRPCError } from "@trpc/server";
-import { eq, and, isNull, desc, asc, ilike, sql, inArray, gte, lte } from "drizzle-orm";
+import { eq, and, isNull, desc, asc, ilike, sql, inArray, gte, lte, count } from "drizzle-orm";
 import { z } from "zod";
+import Decimal from "decimal.js";
 import { router, tenantProcedure } from "../../trpc/procedures";
 import { requirePermission, requireModule } from "../../trpc/procedures";
 import { createAuditLog } from "../../audit/index";
@@ -19,6 +20,7 @@ import {
 const NUMERIC_REGEX = /^\d{1,10}(\.\d{1,4})?$/;
 const NUMERIC_6_REGEX = /^\d{1,10}(\.\d{1,6})?$/;
 const PRICE_REGEX = /^\d{1,10}(\.\d{1,2})?$/;
+const DATE_REGEX = /^\d{4}-\d{2}-\d{2}$/;
 
 const unitTypes = ["weight", "piece"] as const;
 const recipeTypes = ["base", "final"] as const;
@@ -50,8 +52,56 @@ async function getLatestPricePerUnit(
 }
 
 /**
+ * Auto-create a snapshot of a recipe's current state.
+ */
+async function autoSnapshot(
+  db: any,
+  tenantId: string,
+  recipeId: string,
+  notes: string
+): Promise<void> {
+  const [recipe] = await db
+    .select()
+    .from(costingRecipes)
+    .where(
+      and(
+        eq(costingRecipes.id, recipeId),
+        eq(costingRecipes.tenantId, tenantId),
+        isNull(costingRecipes.deletedAt)
+      )
+    )
+    .limit(1);
+
+  if (!recipe) return;
+
+  const ingredients = await db
+    .select()
+    .from(costingRecipeIngredients)
+    .where(eq(costingRecipeIngredients.recipeId, recipeId))
+    .orderBy(asc(costingRecipeIngredients.sortOrder));
+
+  await db.insert(costingSnapshots).values({
+    tenantId,
+    recipeId,
+    totalCost: recipe.totalCost ?? "0",
+    costPerGram: recipe.costPerGram,
+    cogsPct: recipe.cogsPct,
+    ingredientCosts: ingredients.map((ing: any) => ({
+      id: ing.id,
+      ingredientType: ing.ingredientType,
+      inventoryItemId: ing.inventoryItemId,
+      baseRecipeId: ing.baseRecipeId,
+      amount: ing.amount,
+      unitCost: ing.unitCost,
+      extendedCost: ing.extendedCost,
+    })),
+    notes,
+  });
+}
+
+/**
  * Recalculate a recipe's costs based on its ingredients.
- * Updates the recipe row in-place. Returns the updated recipe.
+ * Uses Decimal.js for all financial arithmetic.
  */
 async function recalculateRecipeCosts(
   db: any,
@@ -87,7 +137,6 @@ async function recalculateRecipeCosts(
       const price = await getLatestPricePerUnit(db, tenantId, ing.inventoryItemId);
       unitCost = price ?? "0";
     } else if (ing.ingredientType === "base" && ing.baseRecipeId) {
-      // Get cost_per_gram from the base recipe
       const [baseRecipe] = await db
         .select({ costPerGram: costingRecipes.costPerGram })
         .from(costingRecipes)
@@ -102,7 +151,7 @@ async function recalculateRecipeCosts(
       unitCost = baseRecipe?.costPerGram ?? "0";
     }
 
-    const extendedCost = (parseFloat(ing.amount) * parseFloat(unitCost)).toFixed(4);
+    const extendedCost = new Decimal(ing.amount).mul(unitCost).toFixed(4);
 
     await db
       .update(costingRecipeIngredients)
@@ -116,16 +165,15 @@ async function recalculateRecipeCosts(
     .from(costingRecipeIngredients)
     .where(eq(costingRecipeIngredients.recipeId, recipeId));
 
-  const totalCost = updatedIngredients.reduce(
-    (sum: number, i: any) => sum + parseFloat(i.extendedCost),
-    0
-  );
-  const rawWeight = updatedIngredients.reduce(
-    (sum: number, i: any) => sum + parseFloat(i.amount),
-    0
-  );
-  const yieldLoss = parseFloat(recipe.yieldLossPct) / 100;
-  const netWeight = rawWeight * (1 - yieldLoss);
+  let totalCost = new Decimal(0);
+  let rawWeight = new Decimal(0);
+  for (const i of updatedIngredients) {
+    totalCost = totalCost.plus(i.extendedCost);
+    rawWeight = rawWeight.plus(i.amount);
+  }
+
+  const yieldLoss = new Decimal(recipe.yieldLossPct || 0).div(100);
+  const netWeight = rawWeight.mul(new Decimal(1).minus(yieldLoss));
 
   const updateData: Record<string, unknown> = {
     totalCost: totalCost.toFixed(4),
@@ -134,15 +182,15 @@ async function recalculateRecipeCosts(
     updatedAt: new Date(),
   };
 
-  if (netWeight > 0) {
-    updateData.costPerGram = (totalCost / netWeight).toFixed(6);
+  if (netWeight.gt(0)) {
+    updateData.costPerGram = totalCost.div(netWeight).toFixed(6);
   }
 
   // For final products, calculate COGS%
   if (recipe.type === "final" && recipe.sellingPrice) {
-    const sp = parseFloat(recipe.sellingPrice);
-    if (sp > 0) {
-      updateData.cogsPct = ((totalCost / sp) * 100).toFixed(2);
+    const sp = new Decimal(recipe.sellingPrice);
+    if (sp.gt(0)) {
+      updateData.cogsPct = totalCost.div(sp).mul(100).toFixed(2);
     }
   }
 
@@ -172,6 +220,8 @@ const inventoryRouter = router({
           search: z.string().optional(),
           category: z.string().optional(),
           isActive: z.boolean().optional(),
+          limit: z.number().int().min(1).max(100).optional().default(50),
+          offset: z.number().int().min(0).optional().default(0),
         })
         .optional()
     )
@@ -193,11 +243,23 @@ const inventoryRouter = router({
         conditions.push(eq(costingInventoryItems.isActive, input.isActive));
       }
 
+      const whereClause = and(...conditions);
+
+      const [totalResult] = await ctx.db
+        .select({ count: count() })
+        .from(costingInventoryItems)
+        .where(whereClause);
+
+      const limit = input?.limit ?? 50;
+      const offset = input?.offset ?? 0;
+
       const items = await ctx.db
         .select()
         .from(costingInventoryItems)
-        .where(and(...conditions))
-        .orderBy(asc(costingInventoryItems.name));
+        .where(whereClause)
+        .orderBy(asc(costingInventoryItems.name))
+        .limit(limit)
+        .offset(offset);
 
       // Fetch latest price for each item
       const itemsWithPrice = await Promise.all(
@@ -207,7 +269,7 @@ const inventoryRouter = router({
         })
       );
 
-      return itemsWithPrice;
+      return { items: itemsWithPrice, total: totalResult?.count ?? 0 };
     }),
 
   get: costingProcedure
@@ -253,7 +315,7 @@ const inventoryRouter = router({
             purchasePrice: z.string().regex(NUMERIC_REGEX),
             pricePerUnit: z.string().regex(NUMERIC_6_REGEX),
             supplier: z.string().max(200).optional(),
-            effectiveDate: z.string(), // ISO date string
+            effectiveDate: z.string().regex(DATE_REGEX, "Must be YYYY-MM-DD format"),
           })
           .optional(),
       })
@@ -411,7 +473,7 @@ const inventoryRouter = router({
         purchasePrice: z.string().regex(NUMERIC_REGEX),
         pricePerUnit: z.string().regex(NUMERIC_6_REGEX),
         supplier: z.string().max(200).optional(),
-        effectiveDate: z.string(),
+        effectiveDate: z.string().regex(DATE_REGEX, "Must be YYYY-MM-DD format"),
         notes: z.string().optional(),
       })
     )
@@ -483,8 +545,8 @@ const priceHistoryRouter = router({
     .input(
       z.object({
         itemId: z.string().uuid(),
-        fromDate: z.string().optional(),
-        toDate: z.string().optional(),
+        fromDate: z.string().regex(DATE_REGEX, "Must be YYYY-MM-DD format").optional(),
+        toDate: z.string().regex(DATE_REGEX, "Must be YYYY-MM-DD format").optional(),
       })
     )
     .query(async ({ input, ctx }) => {
@@ -536,6 +598,8 @@ const recipesRouter = router({
           type: z.enum(recipeTypes).optional(),
           search: z.string().optional(),
           currentOnly: z.boolean().optional(),
+          limit: z.number().int().min(1).max(100).optional().default(50),
+          offset: z.number().int().min(0).optional().default(0),
         })
         .optional()
     )
@@ -554,15 +618,28 @@ const recipesRouter = router({
         );
       }
       if (input?.currentOnly !== false) {
-        // Default to showing only current versions
         conditions.push(eq(costingRecipes.isCurrent, true));
       }
 
-      return ctx.db
+      const whereClause = and(...conditions);
+
+      const [totalResult] = await ctx.db
+        .select({ count: count() })
+        .from(costingRecipes)
+        .where(whereClause);
+
+      const limit = input?.limit ?? 50;
+      const offset = input?.offset ?? 0;
+
+      const items = await ctx.db
         .select()
         .from(costingRecipes)
-        .where(and(...conditions))
-        .orderBy(asc(costingRecipes.name), desc(costingRecipes.version));
+        .where(whereClause)
+        .orderBy(asc(costingRecipes.name), desc(costingRecipes.version))
+        .limit(limit)
+        .offset(offset);
+
+      return { items, total: totalResult?.count ?? 0 };
     }),
 
   get: costingProcedure
@@ -865,15 +942,19 @@ const recipesRouter = router({
 
       if (!recipe) throw new TRPCError({ code: "NOT_FOUND", message: "Recipe not found" });
 
-      // Scale all ingredient amounts
+      // Fix 6: Auto-snapshot before destructive scale operation
+      await autoSnapshot(ctx.db, ctx.tenantId, input.id, `Auto-snapshot before scale x${input.factor}`);
+
+      // Scale all ingredient amounts using Decimal
       const ingredients = await ctx.db
         .select()
         .from(costingRecipeIngredients)
         .where(eq(costingRecipeIngredients.recipeId, input.id));
 
+      const factor = new Decimal(input.factor);
       for (const ing of ingredients) {
-        const newAmount = (parseFloat(ing.amount) * input.factor).toFixed(4);
-        const newExtended = (parseFloat(ing.extendedCost) * input.factor).toFixed(4);
+        const newAmount = new Decimal(ing.amount).mul(factor).toFixed(4);
+        const newExtended = new Decimal(ing.extendedCost).mul(factor).toFixed(4);
         await ctx.db
           .update(costingRecipeIngredients)
           .set({ amount: newAmount, extendedCost: newExtended })
@@ -1065,8 +1146,7 @@ const ingredientsRouter = router({
         unitCost = base.costPerGram ?? "0";
       }
 
-      const amount = parseFloat(input.amount);
-      const extendedCost = (amount * parseFloat(unitCost)).toFixed(4);
+      const extendedCost = new Decimal(input.amount).mul(unitCost).toFixed(4);
 
       const [ingredient] = await ctx.db
         .insert(costingRecipeIngredients)
@@ -1140,9 +1220,7 @@ const ingredientsRouter = router({
         if (!current)
           throw new TRPCError({ code: "NOT_FOUND", message: "Ingredient not found" });
 
-        updateData.extendedCost = (
-          parseFloat(input.amount) * parseFloat(current.unitCost)
-        ).toFixed(4);
+        updateData.extendedCost = new Decimal(input.amount).mul(current.unitCost).toFixed(4);
       }
 
       const [updated] = await ctx.db
@@ -1260,7 +1338,7 @@ const costingCalcRouter = router({
     }),
 
   recalculateCascade: costingProcedure
-    .use(requirePermission("costing:manage"))
+    .use(requirePermission("costing:admin"))
     .input(z.object({ itemId: z.string().uuid() }))
     .mutation(async ({ input, ctx }) => {
       // Verify item belongs to tenant
@@ -1279,11 +1357,16 @@ const costingCalcRouter = router({
       if (!item)
         throw new TRPCError({ code: "NOT_FOUND", message: "Inventory item not found" });
 
-      // Find all recipes using this item (directly)
+      // Fix 1: Tenant-scoped join for direct ingredients
       const directIngredients = await ctx.db
         .select({ recipeId: costingRecipeIngredients.recipeId })
         .from(costingRecipeIngredients)
-        .where(eq(costingRecipeIngredients.inventoryItemId, input.itemId));
+        .innerJoin(costingRecipes, eq(costingRecipeIngredients.recipeId, costingRecipes.id))
+        .where(and(
+          eq(costingRecipeIngredients.inventoryItemId, input.itemId),
+          eq(costingRecipes.tenantId, ctx.tenantId),
+          isNull(costingRecipes.deletedAt)
+        ));
 
       const directRecipeIds = [
         ...new Set(directIngredients.map((i) => i.recipeId)),
@@ -1292,23 +1375,8 @@ const costingCalcRouter = router({
       // Recalculate direct recipes
       const updatedRecipes: any[] = [];
       for (const recipeId of directRecipeIds) {
-        // Verify this recipe belongs to tenant
-        const [r] = await ctx.db
-          .select({ id: costingRecipes.id, type: costingRecipes.type })
-          .from(costingRecipes)
-          .where(
-            and(
-              eq(costingRecipes.id, recipeId),
-              eq(costingRecipes.tenantId, ctx.tenantId),
-              isNull(costingRecipes.deletedAt)
-            )
-          )
-          .limit(1);
-
-        if (r) {
-          const updated = await recalculateRecipeCosts(ctx.db, ctx.tenantId, recipeId);
-          updatedRecipes.push(updated);
-        }
+        const updated = await recalculateRecipeCosts(ctx.db, ctx.tenantId, recipeId);
+        updatedRecipes.push(updated);
       }
 
       // Find final products using updated base recipes as ingredients
@@ -1317,32 +1385,24 @@ const costingCalcRouter = router({
         .map((r) => r.id);
 
       if (baseRecipeIds.length > 0) {
+        // Fix 1: Tenant-scoped join for cascade ingredients
         const cascadeIngredients = await ctx.db
           .select({ recipeId: costingRecipeIngredients.recipeId })
           .from(costingRecipeIngredients)
-          .where(inArray(costingRecipeIngredients.baseRecipeId, baseRecipeIds));
+          .innerJoin(costingRecipes, eq(costingRecipeIngredients.recipeId, costingRecipes.id))
+          .where(and(
+            inArray(costingRecipeIngredients.baseRecipeId, baseRecipeIds),
+            eq(costingRecipes.tenantId, ctx.tenantId),
+            isNull(costingRecipes.deletedAt)
+          ));
 
         const cascadeRecipeIds = [
           ...new Set(cascadeIngredients.map((i) => i.recipeId)),
         ];
 
         for (const recipeId of cascadeRecipeIds) {
-          const [r] = await ctx.db
-            .select({ id: costingRecipes.id })
-            .from(costingRecipes)
-            .where(
-              and(
-                eq(costingRecipes.id, recipeId),
-                eq(costingRecipes.tenantId, ctx.tenantId),
-                isNull(costingRecipes.deletedAt)
-              )
-            )
-            .limit(1);
-
-          if (r) {
-            const updated = await recalculateRecipeCosts(ctx.db, ctx.tenantId, recipeId);
-            updatedRecipes.push(updated);
-          }
+          const updated = await recalculateRecipeCosts(ctx.db, ctx.tenantId, recipeId);
+          updatedRecipes.push(updated);
         }
       }
 
@@ -1375,17 +1435,22 @@ const costingCalcRouter = router({
         throw new TRPCError({ code: "NOT_FOUND", message: "Inventory item not found" });
 
       const currentPrice = await getLatestPricePerUnit(ctx.db, ctx.tenantId, input.itemId);
-      const oldPricePerUnit = parseFloat(currentPrice ?? "0");
-      const newPricePerUnit = parseFloat(input.newPricePerUnit);
+      const oldPricePerUnit = new Decimal(currentPrice ?? "0");
+      const newPricePerUnit = new Decimal(input.newPricePerUnit);
 
-      // Find all recipes using this item
+      // Fix 1: Tenant-scoped join for price impact ingredients
       const directIngredients = await ctx.db
         .select({
           recipeId: costingRecipeIngredients.recipeId,
           amount: costingRecipeIngredients.amount,
         })
         .from(costingRecipeIngredients)
-        .where(eq(costingRecipeIngredients.inventoryItemId, input.itemId));
+        .innerJoin(costingRecipes, eq(costingRecipeIngredients.recipeId, costingRecipes.id))
+        .where(and(
+          eq(costingRecipeIngredients.inventoryItemId, input.itemId),
+          eq(costingRecipes.tenantId, ctx.tenantId),
+          isNull(costingRecipes.deletedAt)
+        ));
 
       const impacts: any[] = [];
 
@@ -1404,21 +1469,21 @@ const costingCalcRouter = router({
 
         if (!recipe) continue;
 
-        const amount = parseFloat(ing.amount);
-        const oldIngCost = amount * oldPricePerUnit;
-        const newIngCost = amount * newPricePerUnit;
-        const costDiff = newIngCost - oldIngCost;
+        const amount = new Decimal(ing.amount);
+        const oldIngCost = amount.mul(oldPricePerUnit);
+        const newIngCost = amount.mul(newPricePerUnit);
+        const costDiff = newIngCost.minus(oldIngCost);
 
-        const oldTotal = parseFloat(recipe.totalCost ?? "0");
-        const newTotal = oldTotal + costDiff;
+        const oldTotal = new Decimal(recipe.totalCost ?? "0");
+        const newTotal = oldTotal.plus(costDiff);
 
-        let oldCogsPct: number | null = null;
-        let newCogsPct: number | null = null;
+        let oldCogsPct: string | null = null;
+        let newCogsPct: string | null = null;
         if (recipe.type === "final" && recipe.sellingPrice) {
-          const sp = parseFloat(recipe.sellingPrice);
-          if (sp > 0) {
-            oldCogsPct = (oldTotal / sp) * 100;
-            newCogsPct = (newTotal / sp) * 100;
+          const sp = new Decimal(recipe.sellingPrice);
+          if (sp.gt(0)) {
+            oldCogsPct = oldTotal.div(sp).mul(100).toFixed(2);
+            newCogsPct = newTotal.div(sp).mul(100).toFixed(2);
           }
         }
 
@@ -1429,8 +1494,8 @@ const costingCalcRouter = router({
           oldTotalCost: oldTotal.toFixed(4),
           newTotalCost: newTotal.toFixed(4),
           costDifference: costDiff.toFixed(4),
-          oldCogsPct: oldCogsPct?.toFixed(2) ?? null,
-          newCogsPct: newCogsPct?.toFixed(2) ?? null,
+          oldCogsPct,
+          newCogsPct,
         });
       }
 
@@ -1438,13 +1503,13 @@ const costingCalcRouter = router({
         itemName: item.name,
         oldPricePerUnit: oldPricePerUnit.toFixed(6),
         newPricePerUnit: newPricePerUnit.toFixed(6),
-        priceDifference: (newPricePerUnit - oldPricePerUnit).toFixed(6),
+        priceDifference: newPricePerUnit.minus(oldPricePerUnit).toFixed(6),
         affectedRecipes: impacts,
       };
     }),
 
   createSnapshot: costingProcedure
-    .use(requirePermission("costing:manage"))
+    .use(requirePermission("costing:admin"))
     .input(
       z.object({
         recipeId: z.string().uuid(),
@@ -1512,6 +1577,73 @@ const costingCalcRouter = router({
         },
         ctx.db
       );
+
+      return snapshot;
+    }),
+
+  // Fix 5: Snapshot read endpoints
+  listSnapshots: costingProcedure
+    .use(requirePermission("costing:view"))
+    .input(
+      z.object({
+        recipeId: z.string().uuid(),
+        limit: z.number().int().min(1).max(100).optional().default(20),
+        offset: z.number().int().min(0).optional().default(0),
+      })
+    )
+    .query(async ({ input, ctx }) => {
+      // Verify recipe belongs to tenant
+      const [recipe] = await ctx.db
+        .select({ id: costingRecipes.id })
+        .from(costingRecipes)
+        .where(
+          and(
+            eq(costingRecipes.id, input.recipeId),
+            eq(costingRecipes.tenantId, ctx.tenantId),
+            isNull(costingRecipes.deletedAt)
+          )
+        )
+        .limit(1);
+
+      if (!recipe) throw new TRPCError({ code: "NOT_FOUND", message: "Recipe not found" });
+
+      const whereClause = and(
+        eq(costingSnapshots.recipeId, input.recipeId),
+        eq(costingSnapshots.tenantId, ctx.tenantId)
+      );
+
+      const [totalResult] = await ctx.db
+        .select({ count: count() })
+        .from(costingSnapshots)
+        .where(whereClause);
+
+      const items = await ctx.db
+        .select()
+        .from(costingSnapshots)
+        .where(whereClause)
+        .orderBy(desc(costingSnapshots.snapshotDate))
+        .limit(input.limit)
+        .offset(input.offset);
+
+      return { items, total: totalResult?.count ?? 0 };
+    }),
+
+  getSnapshot: costingProcedure
+    .use(requirePermission("costing:view"))
+    .input(z.object({ id: z.string().uuid() }))
+    .query(async ({ input, ctx }) => {
+      const [snapshot] = await ctx.db
+        .select()
+        .from(costingSnapshots)
+        .where(
+          and(
+            eq(costingSnapshots.id, input.id),
+            eq(costingSnapshots.tenantId, ctx.tenantId)
+          )
+        )
+        .limit(1);
+
+      if (!snapshot) throw new TRPCError({ code: "NOT_FOUND", message: "Snapshot not found" });
 
       return snapshot;
     }),

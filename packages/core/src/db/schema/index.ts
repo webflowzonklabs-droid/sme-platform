@@ -44,3 +44,20 @@ export {
   type CatalogProductAttribute,
   type NewCatalogProductAttribute,
 } from "../../modules/catalog/schema";
+export {
+  costingInventoryItems,
+  costingPriceHistory,
+  costingRecipes,
+  costingRecipeIngredients,
+  costingSnapshots,
+  type CostingInventoryItem,
+  type NewCostingInventoryItem,
+  type CostingPriceHistory,
+  type NewCostingPriceHistory,
+  type CostingRecipe,
+  type NewCostingRecipe,
+  type CostingRecipeIngredient,
+  type NewCostingRecipeIngredient,
+  type CostingSnapshot,
+  type NewCostingSnapshot,
+} from "../../modules/costing/schema";

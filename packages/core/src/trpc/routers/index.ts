@@ -8,11 +8,13 @@ import { auditRouter } from "./audit";
 import { adminRouter } from "./admin";
 import { notesRouter } from "../../modules/notes/router";
 import { catalogRouter } from "../../modules/catalog/router";
+import { costingRouter } from "../../modules/costing/router";
 
 // Side-effect imports: register modules in the in-memory registry
 // so getModule() / getModuleRegistry() return navigation, permissions, etc.
 import "../../modules/notes/index";
 import "../../modules/catalog/index";
+import "../../modules/costing/index";
 
 // ============================================
 // Root App Router — all core routes + module routes
@@ -37,6 +39,7 @@ export const appRouter = router({
   // enforced at runtime via requireModule() middleware)
   notes: notesRouter,
   catalog: catalogRouter,
+  costing: costingRouter,
 });
 
 export type AppRouter = typeof appRouter;

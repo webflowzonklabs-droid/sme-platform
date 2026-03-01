@@ -10,7 +10,7 @@ export function MobileMenu({ subcategories }: { subcategories: Subcategory[] }) 
     <>
       <button
         onClick={() => setOpen(!open)}
-        className="md:hidden p-2 text-[#888] hover:text-white"
+        className="md:hidden p-2 text-[#F5A623] hover:text-white"
         aria-label="Menu"
       >
         <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="2">
@@ -23,16 +23,16 @@ export function MobileMenu({ subcategories }: { subcategories: Subcategory[] }) 
       </button>
 
       {open && (
-        <div className="absolute top-full left-0 right-0 bg-[#0e0e0e] border-b border-[#1a1a1a] md:hidden z-50">
+        <div className="absolute top-full left-0 right-0 bg-[#0e0e0e] border-b border-[#F5A623]/20 md:hidden z-50">
           <nav className="p-4 space-y-1">
-            <a href="/" className="block px-3 py-2.5 text-sm font-medium text-white rounded hover:bg-[#141414]">
+            <a href="/" className="block px-3 py-2.5 text-sm font-bold text-white rounded hover:bg-[#1a1a1a] uppercase">
               Home
             </a>
             {subcategories.filter(s => s.productCount > 0).map((sc) => (
               <a
                 key={sc.id}
                 href={`/category/${sc.slug}`}
-                className="flex items-center justify-between px-3 py-2.5 text-sm text-[#888] rounded hover:bg-[#141414] hover:text-white"
+                className="flex items-center justify-between px-3 py-2.5 text-sm text-[#888] rounded hover:bg-[#1a1a1a] hover:text-[#F5A623] font-medium uppercase"
               >
                 <span>{sc.name}</span>
                 <span className="text-xs text-[#444]">{sc.productCount}</span>

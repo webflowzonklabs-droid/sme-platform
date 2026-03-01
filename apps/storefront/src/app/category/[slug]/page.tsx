@@ -46,13 +46,13 @@ export default async function CategoryPage({
     <div className="mx-auto max-w-7xl px-4 py-6">
       {/* Breadcrumb */}
       <nav className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-[#555] mb-6">
-        <a href="/" className="hover:text-[#c8b88a] transition-colors">Home</a>
+        <a href="/" className="hover:text-[#F5A623] transition-colors">Home</a>
         <span className="text-[#333]">/</span>
         <span className="text-[#888]">{current.name}</span>
         {sp.brand && (
           <>
             <span className="text-[#333]">/</span>
-            <span className="text-[#c8b88a]">{sp.brand}</span>
+            <span className="text-[#F5A623]">{sp.brand}</span>
           </>
         )}
       </nav>
@@ -83,15 +83,15 @@ export default async function CategoryPage({
             <section key={group.brand}>
               <div className="flex items-center justify-between mb-4">
                 <div className="flex items-center gap-3">
-                  <div className="w-4 h-px bg-[#4a5c3a]" />
-                  <h2 className="text-sm font-bold text-white uppercase tracking-wider">
+                  <div className="w-4 h-px bg-[#F5A623]" />
+                  <h2 className="text-sm font-black text-white uppercase tracking-wider">
                     {group.brand}
                   </h2>
                   <span className="text-[10px] text-[#444]">{group.count}</span>
                 </div>
                 <a
                   href={`/category/${slug}?brand=${encodeURIComponent(group.brand)}`}
-                  className="text-[10px] text-[#555] hover:text-[#c8b88a] transition-colors uppercase tracking-wider"
+                  className="text-[10px] text-[#555] hover:text-[#F5A623] transition-colors uppercase tracking-wider font-bold"
                 >
                   View All →
                 </a>
@@ -110,14 +110,14 @@ export default async function CategoryPage({
               {page > 1 && (
                 <a
                   href={`/category/${slug}?${new URLSearchParams({ ...(sp.brand ? { brand: sp.brand } : {}), ...(sp.stock ? { stock: sp.stock } : {}), page: String(page - 1) }).toString()}`}
-                  className="px-4 py-2 rounded bg-[#111] border border-[#1a1a1a] text-xs hover:bg-[#181818] transition-colors text-[#888]"
+                  className="px-4 py-2 rounded bg-[#111] border border-[#1a1a1a] text-xs hover:border-[#F5A623]/30 hover:text-[#F5A623] transition-colors text-[#888] font-bold uppercase"
                 >
                   ← Previous
                 </a>
               )}
               <a
                 href={`/category/${slug}?${new URLSearchParams({ ...(sp.brand ? { brand: sp.brand } : {}), ...(sp.stock ? { stock: sp.stock } : {}), page: String(page + 1) }).toString()}`}
-                className="px-4 py-2 rounded bg-[#111] border border-[#1a1a1a] text-xs hover:bg-[#181818] transition-colors text-[#888]"
+                className="px-4 py-2 rounded bg-[#111] border border-[#1a1a1a] text-xs hover:border-[#F5A623]/30 hover:text-[#F5A623] transition-colors text-[#888] font-bold uppercase"
               >
                 Next →
               </a>

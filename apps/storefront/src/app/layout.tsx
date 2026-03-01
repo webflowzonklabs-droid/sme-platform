@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { getSubcategories, getProductCount } from "@/lib/queries";
 import { SearchBar } from "@/components/search-bar";
 import { MobileMenu } from "@/components/mobile-menu";
+import Image from "next/image";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -23,15 +24,20 @@ export default async function RootLayout({ children }: { children: React.ReactNo
       <body className="min-h-screen">
         {/* Header */}
         <header className="sticky top-0 z-50 border-b border-[#1a1a1a] bg-[#0a0a0a]/97 backdrop-blur-md">
-          <div className="mx-auto max-w-7xl px-4 py-3 flex items-center justify-between gap-4">
+          <div className="mx-auto max-w-7xl px-4 py-2 flex items-center justify-between gap-4">
             {/* Logo */}
             <a href="/" className="flex items-center gap-3 shrink-0">
-              <div className="h-10 w-10 rounded bg-[#4a5c3a] flex items-center justify-center font-black text-white text-lg tracking-tighter border border-[#5a6c4a]">
-                N
-              </div>
+              <Image
+                src="/nekneks-logo.jpg"
+                alt="NekNeks Airsoft"
+                width={44}
+                height={44}
+                className="rounded"
+                unoptimized
+              />
               <div>
                 <h1 className="text-lg font-black tracking-[0.08em] text-white uppercase">NEKNEKS</h1>
-                <p className="text-[9px] uppercase tracking-[0.4em] text-[#4a5c3a] font-semibold">Airsoft Supply</p>
+                <p className="text-[9px] uppercase tracking-[0.4em] text-[#F5A623] font-semibold">Airsoft Shop</p>
               </div>
             </a>
 
@@ -46,7 +52,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 <a
                   key={sc.id}
                   href={`/category/${sc.slug}`}
-                  className="px-3 py-1.5 rounded text-[#888] hover:text-[#c8b88a] hover:bg-[#141414] transition-colors text-xs font-medium uppercase tracking-wider"
+                  className="px-3 py-1.5 rounded text-[#888] hover:text-[#F5A623] hover:bg-[#1a1a1a] transition-colors text-xs font-bold uppercase tracking-wider"
                 >
                   {sc.name.replace(' Rifles', '').replace(' Pistols', '')}
                 </a>
@@ -66,21 +72,31 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <main>{children}</main>
 
         {/* Footer */}
-        <footer className="border-t border-[#1a1a1a] mt-16 camo-stripe">
+        <footer className="border-t border-[#1a1a1a] mt-16 concrete-bg">
           <div className="mx-auto max-w-7xl px-4 py-10">
             <div className="grid md:grid-cols-3 gap-8">
               <div>
-                <h3 className="font-black text-white uppercase tracking-wider text-sm mb-3">NekNeks Airsoft</h3>
+                <div className="flex items-center gap-3 mb-3">
+                  <Image
+                    src="/nekneks-logo.jpg"
+                    alt="NekNeks Airsoft"
+                    width={36}
+                    height={36}
+                    className="rounded"
+                    unoptimized
+                  />
+                  <h3 className="font-black text-white uppercase tracking-wider text-sm">NekNeks Airsoft</h3>
+                </div>
                 <p className="text-xs text-[#555] leading-relaxed">
                   Your trusted airsoft gear provider in the Philippines. {totalCount}+ products across rifles, pistols, and tactical gear.
                 </p>
               </div>
               <div>
-                <h3 className="font-bold text-[#888] uppercase tracking-wider text-xs mb-3">Categories</h3>
+                <h3 className="font-bold text-[#F5A623] uppercase tracking-wider text-xs mb-3">Categories</h3>
                 <ul className="space-y-1.5">
                   {subcategories.filter(s => s.productCount > 0).map((sc) => (
                     <li key={sc.id}>
-                      <a href={`/category/${sc.slug}`} className="text-xs text-[#555] hover:text-[#c8b88a] transition-colors">
+                      <a href={`/category/${sc.slug}`} className="text-xs text-[#555] hover:text-[#F5A623] transition-colors">
                         {sc.name}
                       </a>
                     </li>
@@ -88,7 +104,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 </ul>
               </div>
               <div>
-                <h3 className="font-bold text-[#888] uppercase tracking-wider text-xs mb-3">Contact</h3>
+                <h3 className="font-bold text-[#F5A623] uppercase tracking-wider text-xs mb-3">Contact</h3>
                 <p className="text-xs text-[#555]">📍 Visit our shop or message us on social media to order!</p>
               </div>
             </div>

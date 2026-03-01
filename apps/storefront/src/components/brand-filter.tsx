@@ -25,7 +25,7 @@ export function BrandFilter({
       <div className="flex items-center gap-2">
         <a
           href={buildUrl(activeBrand || undefined, undefined)}
-          className={`brand-pill px-3 py-1.5 rounded border text-[10px] font-medium uppercase tracking-wider ${
+          className={`brand-pill px-3 py-1.5 rounded border text-[10px] font-bold uppercase tracking-wider ${
             !activeStock ? "active" : "border-[#1e1e1e] text-[#555]"
           }`}
         >
@@ -33,7 +33,7 @@ export function BrandFilter({
         </a>
         <a
           href={buildUrl(activeBrand || undefined, "in_stock")}
-          className={`brand-pill px-3 py-1.5 rounded border text-[10px] font-medium uppercase tracking-wider flex items-center gap-1.5 ${
+          className={`brand-pill px-3 py-1.5 rounded border text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 ${
             activeStock === "in_stock"
               ? "bg-green-500/10 border-green-500/30 text-green-400"
               : "border-[#1e1e1e] text-[#555]"
@@ -49,7 +49,7 @@ export function BrandFilter({
         {activeBrand && (
           <a
             href={buildUrl(undefined, activeStock || undefined)}
-            className="brand-pill px-3 py-1.5 rounded border border-[#1e1e1e] text-[10px] font-medium uppercase tracking-wider text-[#888] hover:text-white"
+            className="brand-pill px-3 py-1.5 rounded border border-[#1e1e1e] text-[10px] font-bold uppercase tracking-wider text-[#888] hover:text-white"
           >
             ✕ Clear
           </a>
@@ -58,7 +58,7 @@ export function BrandFilter({
           <a
             key={b.brand}
             href={buildUrl(b.brand, activeStock || undefined)}
-            className={`brand-pill px-3 py-1.5 rounded border text-[10px] font-medium uppercase tracking-wider ${
+            className={`brand-pill px-3 py-1.5 rounded border text-[10px] font-bold uppercase tracking-wider ${
               activeBrand === b.brand ? "active" : "border-[#1e1e1e] text-[#555]"
             }`}
           >

@@ -35,11 +35,11 @@ export function SearchBar({ defaultValue = "" }: { defaultValue?: string }) {
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder="Search products, brands..."
-        className="w-full bg-[#111] border border-[#1e1e1e] rounded pl-9 pr-16 py-2 text-xs text-white placeholder-[#444] focus:outline-none focus:border-[#4a5c3a]/50 transition-colors"
+        className="w-full bg-[#111] border border-[#1e1e1e] rounded pl-9 pr-16 py-2 text-xs text-white placeholder-[#444] focus:outline-none focus:border-[#F5A623]/50 transition-colors"
       />
       <button
         type="submit"
-        className="absolute right-1.5 top-1/2 -translate-y-1/2 px-3 py-1 text-[10px] bg-[#4a5c3a] text-white font-bold rounded hover:bg-[#5a6c4a] transition-colors uppercase tracking-wider"
+        className="absolute right-1.5 top-1/2 -translate-y-1/2 px-3 py-1 text-[10px] bg-[#F5A623] text-black font-black rounded hover:bg-[#FFB84D] transition-colors uppercase tracking-wider"
       >
         Search
       </button>

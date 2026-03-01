@@ -22,7 +22,7 @@ export function ProductGrid({ products }: { products: Product[] }) {
           <a
             key={p.id}
             href={`/product/${p.slug}`}
-            className="product-card group rounded-lg bg-[#111] border border-[#1a1a1a] overflow-hidden relative"
+            className="product-card group rounded-lg card-concrete border border-[#1a1a1a] overflow-hidden relative"
           >
             {/* Image */}
             <div className="relative aspect-square bg-[#0c0c0c] overflow-hidden">
@@ -47,7 +47,7 @@ export function ProductGrid({ products }: { products: Product[] }) {
 
               {/* NEW badge */}
               {p.isNew && inStock && (
-                <div className="absolute top-2 left-2 bg-[#4a5c3a] text-white text-[9px] font-bold px-2 py-0.5 rounded uppercase tracking-wider">
+                <div className="absolute top-2 left-2 bg-[#F5A623] text-black text-[9px] font-black px-2 py-0.5 rounded uppercase tracking-wider">
                   New
                 </div>
               )}
@@ -55,7 +55,7 @@ export function ProductGrid({ products }: { products: Product[] }) {
               {/* Price overlay */}
               <div className="absolute bottom-0 left-0 right-0 p-2">
                 <div className="inline-block bg-black/80 backdrop-blur-sm px-2.5 py-1 rounded">
-                  <span className="text-sm font-bold text-[#c8b88a]">
+                  <span className="text-sm font-black text-[#F5A623]">
                     ₱{Number(p.price).toLocaleString()}
                   </span>
                 </div>
@@ -63,27 +63,27 @@ export function ProductGrid({ products }: { products: Product[] }) {
 
               {/* View Details hover */}
               <div className="view-btn absolute inset-0 flex items-center justify-center bg-black/40 backdrop-blur-[2px]">
-                <span className="px-4 py-2 bg-[#4a5c3a] text-white text-[10px] font-bold uppercase tracking-wider rounded border border-[#5a6c4a]">
+                <span className="px-4 py-2 bg-[#F5A623] text-black text-[10px] font-black uppercase tracking-wider rounded">
                   View Details
                 </span>
               </div>
             </div>
 
             {/* Info */}
-            <div className="p-3">
+            <div className="relative p-3">
               {p.brand && (
-                <p className="text-[9px] uppercase tracking-[0.15em] text-[#4a5c3a] font-semibold mb-0.5">
+                <p className="text-[9px] uppercase tracking-[0.15em] text-[#F5A623] font-bold mb-0.5">
                   {p.brand}
                 </p>
               )}
-              <h3 className="text-xs font-medium leading-tight line-clamp-2 text-[#999] group-hover:text-white transition-colors">
+              <h3 className="text-xs font-bold leading-tight line-clamp-2 text-[#999] group-hover:text-white transition-colors uppercase">
                 {p.name}
               </h3>
               <div className="flex items-center gap-1.5 mt-2">
                 <span
                   className={`w-1.5 h-1.5 rounded-full ${inStock ? "bg-green-500" : "bg-red-500"}`}
                 />
-                <span className={`text-[9px] uppercase tracking-wider font-medium ${inStock ? "text-green-500/70" : "text-red-500/70"}`}>
+                <span className={`text-[9px] uppercase tracking-wider font-bold ${inStock ? "text-green-500/70" : "text-red-500/70"}`}>
                   {inStock ? "In Stock" : "OOS"}
                 </span>
               </div>

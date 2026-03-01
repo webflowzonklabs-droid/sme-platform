@@ -1,14 +1,18 @@
 import { db } from "./db";
 import { sql } from "drizzle-orm";
+import { unstable_cache } from "next/cache";
 
-// Get tenant ID by slug
+// Cache tenant ID — never changes
+let _tenantId: string | null = null;
 async function getTenantId(): Promise<string> {
+  if (_tenantId) return _tenantId;
   const slug = (process.env.TENANT_SLUG || "nekneks-airsoft").trim();
   const result = await db.execute(
     sql`SELECT id FROM tenants WHERE slug = ${slug} AND is_active = true LIMIT 1`
   );
   if (!result.length) throw new Error(`Tenant ${slug} not found`);
-  return result[0].id as string;
+  _tenantId = result[0].id as string;
+  return _tenantId;
 }
 
 export interface Product {
@@ -43,7 +47,7 @@ export interface Subcategory {
   productCount: number;
 }
 
-export async function getSubcategoriesWithPhotos(): Promise<SubcategoryWithPhoto[]> {
+export const getSubcategoriesWithPhotos = unstable_cache(async (): Promise<SubcategoryWithPhoto[]> => {
   const tenantId = await getTenantId();
   const result = await db.execute(sql.raw(`
     SELECT sc.id, sc.name, sc.slug,
@@ -73,7 +77,7 @@ export async function getSubcategoriesWithPhotos(): Promise<SubcategoryWithPhoto
     productCount: parseInt(r.product_count || "0"),
     photoUrl: r.photo_url,
   }));
-}
+}, ["subcategories-with-photos"], { revalidate: 300 });
 
 export async function getProducts(opts?: {
   subcategorySlug?: string;
@@ -147,7 +151,7 @@ export async function getProducts(opts?: {
   }));
 }
 
-export async function getSubcategories(): Promise<Subcategory[]> {
+export const getSubcategories = unstable_cache(async (): Promise<Subcategory[]> => {
   const tenantId = await getTenantId();
   const result = await db.execute(sql.raw(`
     SELECT sc.id, sc.name, sc.slug,
@@ -165,7 +169,7 @@ export async function getSubcategories(): Promise<Subcategory[]> {
     slug: r.slug,
     productCount: parseInt(r.product_count || "0"),
   }));
-}
+}, ["subcategories"], { revalidate: 300 });
 
 export async function getBrandsForSubcategory(subcategorySlug: string): Promise<{ brand: string; count: number }[]> {
   const tenantId = await getTenantId();
@@ -272,16 +276,16 @@ export async function getRelatedProducts(subcategorySlug: string, excludeSlug: s
   }));
 }
 
-export async function getProductCount(): Promise<number> {
+export const getProductCount = unstable_cache(async (): Promise<number> => {
   const tenantId = await getTenantId();
   const result = await db.execute(sql.raw(`
     SELECT COUNT(*) as count FROM catalog_products
     WHERE tenant_id = '${tenantId}' AND deleted_at IS NULL AND is_active = true
   `));
   return parseInt((result[0] as any).count || "0");
-}
+}, ["product-count"], { revalidate: 300 });
 
-export async function getAllBrands(): Promise<{ brand: string; count: number }[]> {
+export const getAllBrands = unstable_cache(async (): Promise<{ brand: string; count: number }[]> => {
   const tenantId = await getTenantId();
   const result = await db.execute(sql.raw(`
     SELECT brand, COUNT(*) as cnt
@@ -290,4 +294,4 @@ export async function getAllBrands(): Promise<{ brand: string; count: number }[]
     GROUP BY brand ORDER BY cnt DESC
   `));
   return result.map((r: any) => ({ brand: r.brand, count: parseInt(r.cnt) }));
-}
+}, ["all-brands"], { revalidate: 300 });

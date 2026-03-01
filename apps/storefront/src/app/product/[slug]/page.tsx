@@ -1,9 +1,10 @@
+import Link from "next/link";
 import { getProduct, getRelatedProducts } from "@/lib/queries";
 import { notFound } from "next/navigation";
 import { ProductGrid } from "@/components/product-grid";
 import Image from "next/image";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 300;
 
 export default async function ProductPage({
   params,
@@ -23,24 +24,24 @@ export default async function ProductPage({
     <div className="mx-auto max-w-6xl px-4 py-6">
       {/* Breadcrumb */}
       <nav className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-[#555] mb-6">
-        <a href="/" className="hover:text-[#F5A623] transition-colors">Home</a>
+        <Link href="/" className="hover:text-[#F5A623] transition-colors">Home</Link>
         {product.subcategorySlug && (
           <>
             <span className="text-[#333]">/</span>
-            <a href={`/category/${product.subcategorySlug}`} className="hover:text-[#F5A623] transition-colors">
+            <Link href={`/category/${product.subcategorySlug}`} className="hover:text-[#F5A623] transition-colors">
               {product.subcategoryName}
-            </a>
+            </Link>
           </>
         )}
         {product.brand && (
           <>
             <span className="text-[#333]">/</span>
-            <a
+            <Link
               href={`/category/${product.subcategorySlug}?brand=${encodeURIComponent(product.brand)}`}
               className="hover:text-[#F5A623] transition-colors"
             >
               {product.brand}
-            </a>
+            </Link>
           </>
         )}
         <span className="text-[#333]">/</span>

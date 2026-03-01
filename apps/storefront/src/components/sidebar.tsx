@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { Subcategory } from "@/lib/queries";
 
 export function Sidebar({
@@ -18,7 +19,7 @@ export function Sidebar({
         </h3>
         <ul className="space-y-1 mb-6">
           <li>
-            <a
+            <Link
               href="/"
               className={`block px-3 py-2 rounded-lg text-sm transition-colors font-medium uppercase ${
                 !activeCategory
@@ -27,11 +28,11 @@ export function Sidebar({
               }`}
             >
               All Products
-            </a>
+            </Link>
           </li>
           {subcategories.map((sc) => (
             <li key={sc.id}>
-              <a
+              <Link
                 href={`/?category=${sc.slug}`}
                 className={`flex items-center justify-between px-3 py-2 rounded-lg text-sm transition-colors ${
                   activeCategory === sc.slug
@@ -41,7 +42,7 @@ export function Sidebar({
               >
                 <span>{sc.name}</span>
                 <span className="text-xs text-[#555]">{sc.productCount}</span>
-              </a>
+              </Link>
             </li>
           ))}
         </ul>
@@ -52,7 +53,7 @@ export function Sidebar({
         </h3>
         <ul className="space-y-1">
           <li>
-            <a
+            <Link
               href={activeCategory ? `/?category=${activeCategory}` : "/"}
               className={`block px-3 py-2 rounded-lg text-sm transition-colors font-medium ${
                 !activeStock
@@ -61,10 +62,10 @@ export function Sidebar({
               }`}
             >
               All
-            </a>
+            </Link>
           </li>
           <li>
-            <a
+            <Link
               href={`/?${activeCategory ? `category=${activeCategory}&` : ""}stock=in_stock`}
               className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
                 activeStock === "in_stock"
@@ -74,10 +75,10 @@ export function Sidebar({
             >
               <span className="w-2 h-2 rounded-full bg-green-500" />
               In Stock
-            </a>
+            </Link>
           </li>
           <li>
-            <a
+            <Link
               href={`/?${activeCategory ? `category=${activeCategory}&` : ""}stock=out_of_stock`}
               className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors ${
                 activeStock === "out_of_stock"
@@ -87,7 +88,7 @@ export function Sidebar({
             >
               <span className="w-2 h-2 rounded-full bg-red-500" />
               Out of Stock
-            </a>
+            </Link>
           </li>
         </ul>
       </div>

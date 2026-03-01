@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 
 import { useState } from "react";
 import type { Subcategory } from "@/lib/queries";
@@ -25,18 +26,18 @@ export function MobileMenu({ subcategories }: { subcategories: Subcategory[] }) 
       {open && (
         <div className="absolute top-full left-0 right-0 bg-[#0e0e0e] border-b border-[#F5A623]/20 md:hidden z-50">
           <nav className="p-4 space-y-1">
-            <a href="/" className="block px-3 py-2.5 text-sm font-bold text-white rounded hover:bg-[#1a1a1a] uppercase">
+            <Link href="/" className="block px-3 py-2.5 text-sm font-bold text-white rounded hover:bg-[#1a1a1a] uppercase">
               Home
-            </a>
+            </Link>
             {subcategories.filter(s => s.productCount > 0).map((sc) => (
-              <a
+              <Link
                 key={sc.id}
                 href={`/category/${sc.slug}`}
                 className="flex items-center justify-between px-3 py-2.5 text-sm text-[#888] rounded hover:bg-[#1a1a1a] hover:text-[#F5A623] font-medium uppercase"
               >
                 <span>{sc.name}</span>
                 <span className="text-xs text-[#444]">{sc.productCount}</span>
-              </a>
+              </Link>
             ))}
           </nav>
         </div>

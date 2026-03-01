@@ -1,13 +1,25 @@
 import { getSubcategoriesWithPhotos, getProductCount, getProducts } from "@/lib/queries";
 import { ProductGrid } from "@/components/product-grid";
 import Image from "next/image";
+import Link from "next/link";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 300;
 
-export default async function HomePage() {
+export default async function HomePage({
+  searchParams,
+}: {
+  searchParams: Promise<{ stock?: string }>;
+}) {
+  const sp = await searchParams;
+  const stockFilter = sp.stock === "in_stock" ? "in_stock" : undefined;
   const subcategories = await getSubcategoriesWithPhotos();
   const totalCount = await getProductCount();
-  const featuredProducts = await getProducts({ stockFilter: "in_stock", limit: 8 });
+  const featuredProducts = await getProducts({
+    stockFilter: stockFilter || "in_stock",
+    limit: stockFilter ? 48 : 8,
+  });
+
+  const showingInStockOnly = stockFilter === "in_stock";
 
   return (
     <div>
@@ -17,7 +29,6 @@ export default async function HomePage() {
         <div className="absolute inset-0 grunge-stripe" />
         <div className="relative mx-auto max-w-7xl px-4 py-16 md:py-24">
           <div className="flex flex-col md:flex-row items-start md:items-center gap-8 md:gap-16">
-            {/* Logo prominent */}
             <div className="shrink-0">
               <Image
                 src="/nekneks-logo.jpg"
@@ -45,18 +56,26 @@ export default async function HomePage() {
                 {totalCount}+ airsoft products. HPA Rifles, AEGs, GBB Pistols, Snipers — everything you need to dominate the field.
               </p>
               <div className="mt-6 flex gap-3">
-                <a
+                <Link
                   href="#categories"
-                  className="px-5 py-2.5 bg-[#F5A623] text-black text-xs font-black uppercase tracking-wider rounded hover:bg-[#FFB84D] transition-colors border border-[#F5A623]"
+                  className={`px-5 py-2.5 text-xs font-black uppercase tracking-wider rounded transition-colors border ${
+                    !showingInStockOnly
+                      ? "bg-[#F5A623] text-black border-[#F5A623] hover:bg-[#FFB84D]"
+                      : "bg-transparent text-[#888] border-[#2a2a2a] hover:text-[#F5A623] hover:border-[#F5A623]/50"
+                  }`}
                 >
                   Browse Catalog
-                </a>
-                <a
-                  href="/?stock=in_stock"
-                  className="px-5 py-2.5 bg-transparent text-[#888] text-xs font-bold uppercase tracking-wider rounded hover:text-[#F5A623] transition-colors border border-[#2a2a2a] hover:border-[#F5A623]/50"
+                </Link>
+                <Link
+                  href={showingInStockOnly ? "/" : "/?stock=in_stock"}
+                  className={`px-5 py-2.5 text-xs font-bold uppercase tracking-wider rounded transition-colors border ${
+                    showingInStockOnly
+                      ? "bg-green-600 text-white border-green-600 hover:bg-green-500"
+                      : "bg-transparent text-[#888] border-[#2a2a2a] hover:text-[#F5A623] hover:border-[#F5A623]/50"
+                  }`}
                 >
-                  In Stock Only
-                </a>
+                  {showingInStockOnly ? "✓ In Stock Only" : "In Stock Only"}
+                </Link>
               </div>
             </div>
           </div>
@@ -79,76 +98,92 @@ export default async function HomePage() {
         </div>
       </section>
 
-      {/* Category Cards */}
-      <section id="categories" className="mx-auto max-w-7xl px-4 py-12 md:py-16">
-        <div className="flex items-center gap-3 mb-8">
-          <div className="w-6 h-px bg-[#F5A623]" />
-          <h2 className="text-xs font-black uppercase tracking-[0.2em] text-[#888]">Shop by Category</h2>
-        </div>
-
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
-          {subcategories.map((sc) => (
-            <a
-              key={sc.id}
-              href={`/category/${sc.slug}`}
-              className="category-card group relative rounded-lg overflow-hidden card-concrete border border-[#1a1a1a] hover:border-[#F5A623]/40"
-            >
-              {/* Image */}
-              <div className="relative aspect-[4/3] bg-[#0c0c0c] overflow-hidden">
-                {sc.photoUrl ? (
-                  <Image
-                    src={sc.photoUrl}
-                    alt={sc.name}
-                    fill
-                    className="category-img object-contain p-4 transition-transform duration-500"
-                    sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-                    unoptimized
-                  />
-                ) : (
-                  <div className="flex items-center justify-center h-full text-[#333]">
-                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
-                      <circle cx="12" cy="12" r="10" />
-                      <path d="M12 8v8M8 12h8" />
-                    </svg>
-                  </div>
-                )}
-                {/* Gradient overlay */}
-                <div className="absolute inset-0 bg-gradient-to-t from-[#111] via-transparent to-transparent" />
-              </div>
-
-              {/* Info */}
-              <div className="relative p-3 pb-4">
-                <h3 className="text-sm font-black text-white group-hover:text-[#F5A623] transition-colors uppercase tracking-wide">
-                  {sc.name}
-                </h3>
-                <p className="text-[11px] text-[#555] mt-0.5">
-                  {sc.productCount} product{sc.productCount !== 1 ? "s" : ""}
-                </p>
-              </div>
-
-              {/* Corner accent */}
-              <div className="absolute top-0 right-0 w-6 h-6 border-t-2 border-r-2 border-[#F5A623]/30 rounded-bl opacity-0 group-hover:opacity-100 transition-opacity" />
-              <div className="absolute bottom-0 left-0 w-6 h-6 border-b-2 border-l-2 border-[#F5A623]/30 rounded-tr opacity-0 group-hover:opacity-100 transition-opacity" />
-            </a>
-          ))}
-        </div>
-      </section>
-
-      {/* Featured / In Stock */}
-      {featuredProducts.length > 0 && (
-        <section className="mx-auto max-w-7xl px-4 pb-12 md:pb-16">
+      {/* In Stock Results */}
+      {showingInStockOnly ? (
+        <section className="mx-auto max-w-7xl px-4 py-12">
           <div className="flex items-center justify-between mb-6">
             <div className="flex items-center gap-3">
-              <div className="w-6 h-px bg-[#F5A623]" />
-              <h2 className="text-xs font-black uppercase tracking-[0.2em] text-[#888]">Available Now</h2>
+              <div className="w-6 h-px bg-green-500" />
+              <h2 className="text-xs font-black uppercase tracking-[0.2em] text-[#888]">In Stock Products</h2>
               <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+              <span className="text-xs text-[#555]">{featuredProducts.length} items</span>
             </div>
-            <a href="/?stock=in_stock" className="text-xs text-[#555] hover:text-[#F5A623] transition-colors uppercase tracking-wider font-bold">
-              View All →
-            </a>
+            <Link href="/" className="text-xs text-[#555] hover:text-[#F5A623] transition-colors uppercase tracking-wider font-bold">
+              ← All Products
+            </Link>
           </div>
           <ProductGrid products={featuredProducts} />
         </section>
+      ) : (
+        <>
+          {/* Category Cards */}
+          <section id="categories" className="mx-auto max-w-7xl px-4 py-12 md:py-16">
+            <div className="flex items-center gap-3 mb-8">
+              <div className="w-6 h-px bg-[#F5A623]" />
+              <h2 className="text-xs font-black uppercase tracking-[0.2em] text-[#888]">Shop by Category</h2>
+            </div>
+
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-4">
+              {subcategories.map((sc) => (
+                <Link
+                  key={sc.id}
+                  href={`/category/${sc.slug}`}
+                  className="category-card group relative rounded-lg overflow-hidden card-concrete border border-[#1a1a1a] hover:border-[#F5A623]/40"
+                >
+                  <div className="relative aspect-[4/3] bg-[#0c0c0c] overflow-hidden">
+                    {sc.photoUrl ? (
+                      <Image
+                        src={sc.photoUrl}
+                        alt={sc.name}
+                        fill
+                        className="category-img object-contain p-4 transition-transform duration-500"
+                        sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+                        unoptimized
+                      />
+                    ) : (
+                      <div className="flex items-center justify-center h-full text-[#333]">
+                        <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1">
+                          <circle cx="12" cy="12" r="10" />
+                          <path d="M12 8v8M8 12h8" />
+                        </svg>
+                      </div>
+                    )}
+                    <div className="absolute inset-0 bg-gradient-to-t from-[#111] via-transparent to-transparent" />
+                  </div>
+
+                  <div className="relative p-3 pb-4">
+                    <h3 className="text-sm font-black text-white group-hover:text-[#F5A623] transition-colors uppercase tracking-wide">
+                      {sc.name}
+                    </h3>
+                    <p className="text-[11px] text-[#555] mt-0.5">
+                      {sc.productCount} product{sc.productCount !== 1 ? "s" : ""}
+                    </p>
+                  </div>
+
+                  <div className="absolute top-0 right-0 w-6 h-6 border-t-2 border-r-2 border-[#F5A623]/30 rounded-bl opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <div className="absolute bottom-0 left-0 w-6 h-6 border-b-2 border-l-2 border-[#F5A623]/30 rounded-tr opacity-0 group-hover:opacity-100 transition-opacity" />
+                </Link>
+              ))}
+            </div>
+          </section>
+
+          {/* Featured / In Stock */}
+          {featuredProducts.length > 0 && (
+            <section className="mx-auto max-w-7xl px-4 pb-12 md:pb-16">
+              <div className="flex items-center justify-between mb-6">
+                <div className="flex items-center gap-3">
+                  <div className="w-6 h-px bg-[#F5A623]" />
+                  <h2 className="text-xs font-black uppercase tracking-[0.2em] text-[#888]">Available Now</h2>
+                  <div className="w-2 h-2 rounded-full bg-green-500 animate-pulse" />
+                </div>
+                <Link href="/?stock=in_stock" className="text-xs text-[#555] hover:text-[#F5A623] transition-colors uppercase tracking-wider font-bold">
+                  View All →
+                </Link>
+              </div>
+              <ProductGrid products={featuredProducts} />
+            </section>
+          )}
+        </>
       )}
     </div>
   );

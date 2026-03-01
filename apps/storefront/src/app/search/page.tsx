@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getProducts } from "@/lib/queries";
 import { ProductGrid } from "@/components/product-grid";
 
@@ -22,7 +23,7 @@ export default async function SearchPage({
     <div className="mx-auto max-w-7xl px-4 py-6">
       {/* Breadcrumb */}
       <nav className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-[#555] mb-6">
-        <a href="/" className="hover:text-[#F5A623] transition-colors">Home</a>
+        <Link href="/" className="hover:text-[#F5A623] transition-colors">Home</Link>
         <span className="text-[#333]">/</span>
         <span className="text-[#888]">Search</span>
       </nav>
@@ -38,12 +39,12 @@ export default async function SearchPage({
 
       {products.length === limit && (
         <div className="mt-8 flex justify-center">
-          <a
+          <Link
             href={`/search?q=${encodeURIComponent(query)}&page=${page + 1}`}
             className="px-4 py-2 rounded bg-[#111] border border-[#1a1a1a] text-xs hover:border-[#F5A623]/30 hover:text-[#F5A623] transition-colors text-[#888] font-bold uppercase"
           >
             Next →
-          </a>
+          </Link>
         </div>
       )}
     </div>

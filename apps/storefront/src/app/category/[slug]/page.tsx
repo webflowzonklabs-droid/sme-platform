@@ -1,9 +1,10 @@
+import Link from "next/link";
 import { getProducts, getSubcategories, getBrandsForSubcategory } from "@/lib/queries";
 import { ProductGrid } from "@/components/product-grid";
 import { BrandFilter } from "@/components/brand-filter";
 import { notFound } from "next/navigation";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 300; // ISR: revalidate every 5 minutes
 
 export default async function CategoryPage({
   params,
@@ -27,7 +28,7 @@ export default async function CategoryPage({
     subcategorySlug: slug,
     brand: sp.brand,
     stockFilter: sp.stock,
-    limit: sp.brand ? limit : 500,
+    limit: sp.brand ? limit : 100,
     offset: sp.brand ? offset : 0,
   });
 
@@ -46,7 +47,7 @@ export default async function CategoryPage({
     <div className="mx-auto max-w-7xl px-4 py-6">
       {/* Breadcrumb */}
       <nav className="flex items-center gap-2 text-[10px] uppercase tracking-widest text-[#555] mb-6">
-        <a href="/" className="hover:text-[#F5A623] transition-colors">Home</a>
+        <Link href="/" className="hover:text-[#F5A623] transition-colors">Home</Link>
         <span className="text-[#333]">/</span>
         <span className="text-[#888]">{current.name}</span>
         {sp.brand && (
@@ -89,12 +90,12 @@ export default async function CategoryPage({
                   </h2>
                   <span className="text-[10px] text-[#444]">{group.count}</span>
                 </div>
-                <a
+                <Link
                   href={`/category/${slug}?brand=${encodeURIComponent(group.brand)}`}
                   className="text-[10px] text-[#555] hover:text-[#F5A623] transition-colors uppercase tracking-wider font-bold"
                 >
                   View All →
-                </a>
+                </Link>
               </div>
               <ProductGrid products={group.products.slice(0, 8)} />
             </section>
@@ -108,19 +109,19 @@ export default async function CategoryPage({
           {products.length === limit && (
             <div className="mt-8 flex justify-center gap-2">
               {page > 1 && (
-                <a
+                <Link
                   href={`/category/${slug}?${new URLSearchParams({ ...(sp.brand ? { brand: sp.brand } : {}), ...(sp.stock ? { stock: sp.stock } : {}), page: String(page - 1) }).toString()}`}
                   className="px-4 py-2 rounded bg-[#111] border border-[#1a1a1a] text-xs hover:border-[#F5A623]/30 hover:text-[#F5A623] transition-colors text-[#888] font-bold uppercase"
                 >
                   ← Previous
-                </a>
+                </Link>
               )}
-              <a
+              <Link
                 href={`/category/${slug}?${new URLSearchParams({ ...(sp.brand ? { brand: sp.brand } : {}), ...(sp.stock ? { stock: sp.stock } : {}), page: String(page + 1) }).toString()}`}
                 className="px-4 py-2 rounded bg-[#111] border border-[#1a1a1a] text-xs hover:border-[#F5A623]/30 hover:text-[#F5A623] transition-colors text-[#888] font-bold uppercase"
               >
                 Next →
-              </a>
+              </Link>
             </div>
           )}
         </>

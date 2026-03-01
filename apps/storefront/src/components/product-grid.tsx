@@ -1,3 +1,4 @@
+import Link from "next/link";
 import type { Product } from "@/lib/queries";
 import Image from "next/image";
 
@@ -19,7 +20,7 @@ export function ProductGrid({ products }: { products: Product[] }) {
       {products.map((p) => {
         const inStock = p.stockStatus === "in_stock";
         return (
-          <a
+          <Link
             key={p.id}
             href={`/product/${p.slug}`}
             className="product-card group rounded-lg card-concrete border border-[#1a1a1a] overflow-hidden relative"
@@ -88,7 +89,7 @@ export function ProductGrid({ products }: { products: Product[] }) {
                 </span>
               </div>
             </div>
-          </a>
+          </Link>
         );
       })}
     </div>

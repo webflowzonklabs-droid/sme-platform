@@ -1,4 +1,5 @@
 "use client";
+import Link from "next/link";
 
 export function BrandFilter({
   brands,
@@ -23,15 +24,15 @@ export function BrandFilter({
     <div className="mb-6 space-y-3">
       {/* Stock toggle */}
       <div className="flex items-center gap-2">
-        <a
+        <Link
           href={buildUrl(activeBrand || undefined, undefined)}
           className={`brand-pill px-3 py-1.5 rounded border text-[10px] font-bold uppercase tracking-wider ${
             !activeStock ? "active" : "border-[#1e1e1e] text-[#555]"
           }`}
         >
           All
-        </a>
-        <a
+        </Link>
+        <Link
           href={buildUrl(activeBrand || undefined, "in_stock")}
           className={`brand-pill px-3 py-1.5 rounded border text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 ${
             activeStock === "in_stock"
@@ -41,21 +42,21 @@ export function BrandFilter({
         >
           <span className="w-1.5 h-1.5 rounded-full bg-green-500" />
           In Stock
-        </a>
+        </Link>
       </div>
 
       {/* Brand pills */}
       <div className="flex flex-wrap gap-1.5">
         {activeBrand && (
-          <a
+          <Link
             href={buildUrl(undefined, activeStock || undefined)}
             className="brand-pill px-3 py-1.5 rounded border border-[#1e1e1e] text-[10px] font-bold uppercase tracking-wider text-[#888] hover:text-white"
           >
             ✕ Clear
-          </a>
+          </Link>
         )}
         {brands.map((b) => (
-          <a
+          <Link
             key={b.brand}
             href={buildUrl(b.brand, activeStock || undefined)}
             className={`brand-pill px-3 py-1.5 rounded border text-[10px] font-bold uppercase tracking-wider ${
@@ -63,7 +64,7 @@ export function BrandFilter({
             }`}
           >
             {b.brand} <span className="text-[#333] ml-1">{b.count}</span>
-          </a>
+          </Link>
         ))}
       </div>
     </div>

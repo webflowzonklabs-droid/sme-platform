@@ -3,6 +3,7 @@ import { getSubcategories, getProductCount } from "@/lib/queries";
 import { SearchBar } from "@/components/search-bar";
 import { MobileMenu } from "@/components/mobile-menu";
 import Image from "next/image";
+import Link from "next/link";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -26,7 +27,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <header className="sticky top-0 z-50 border-b border-[#1a1a1a] bg-[#0a0a0a]/97 backdrop-blur-md">
           <div className="mx-auto max-w-7xl px-4 py-2 flex items-center justify-between gap-4">
             {/* Logo */}
-            <a href="/" className="flex items-center gap-3 shrink-0">
+            <Link href="/" className="flex items-center gap-3 shrink-0">
               <Image
                 src="/nekneks-logo.jpg"
                 alt="NekNeks Airsoft"
@@ -39,7 +40,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 <h1 className="text-lg font-black tracking-[0.08em] text-white uppercase">NEKNEKS</h1>
                 <p className="text-[9px] uppercase tracking-[0.4em] text-[#F5A623] font-semibold">Airsoft Shop</p>
               </div>
-            </a>
+            </Link>
 
             {/* Search (desktop) */}
             <div className="hidden md:block flex-1 max-w-md">
@@ -49,13 +50,13 @@ export default async function RootLayout({ children }: { children: React.ReactNo
             {/* Nav */}
             <nav className="hidden md:flex items-center gap-1 text-sm">
               {subcategories.filter(s => s.productCount > 0).slice(0, 5).map((sc) => (
-                <a
+                <Link
                   key={sc.id}
                   href={`/category/${sc.slug}`}
                   className="px-3 py-1.5 rounded text-[#888] hover:text-[#F5A623] hover:bg-[#1a1a1a] transition-colors text-xs font-bold uppercase tracking-wider"
                 >
                   {sc.name.replace(' Rifles', '').replace(' Pistols', '')}
-                </a>
+                </Link>
               ))}
             </nav>
 
@@ -96,9 +97,9 @@ export default async function RootLayout({ children }: { children: React.ReactNo
                 <ul className="space-y-1.5">
                   {subcategories.filter(s => s.productCount > 0).map((sc) => (
                     <li key={sc.id}>
-                      <a href={`/category/${sc.slug}`} className="text-xs text-[#555] hover:text-[#F5A623] transition-colors">
+                      <Link href={`/category/${sc.slug}`} className="text-xs text-[#555] hover:text-[#F5A623] transition-colors">
                         {sc.name}
-                      </a>
+                      </Link>
                     </li>
                   ))}
                 </ul>

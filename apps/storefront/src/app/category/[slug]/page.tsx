@@ -27,8 +27,8 @@ export default async function CategoryPage({
     subcategorySlug: slug,
     brand: sp.brand,
     stockFilter: sp.stock,
-    limit,
-    offset,
+    limit: sp.brand ? limit : 500,
+    offset: sp.brand ? offset : 0,
   });
 
   // Group by brand if no brand filter

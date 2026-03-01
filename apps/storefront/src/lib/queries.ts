@@ -3,7 +3,7 @@ import { sql } from "drizzle-orm";
 
 // Get tenant ID by slug
 async function getTenantId(): Promise<string> {
-  const slug = process.env.TENANT_SLUG || "nekneks-airsoft";
+  const slug = (process.env.TENANT_SLUG || "nekneks-airsoft").trim();
   const result = await db.execute(
     sql`SELECT id FROM tenants WHERE slug = ${slug} AND is_active = true LIMIT 1`
   );

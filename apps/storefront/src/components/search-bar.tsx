@@ -10,7 +10,7 @@ export function SearchBar({ defaultValue = "" }: { defaultValue?: string }) {
   function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     if (query.trim()) {
-      router.push(`/?search=${encodeURIComponent(query.trim())}`);
+      router.push(`/search?q=${encodeURIComponent(query.trim())}`);
     } else {
       router.push("/");
     }
@@ -18,16 +18,28 @@ export function SearchBar({ defaultValue = "" }: { defaultValue?: string }) {
 
   return (
     <form onSubmit={handleSubmit} className="relative">
+      <svg
+        className="absolute left-3 top-1/2 -translate-y-1/2 text-[#444]"
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+      >
+        <circle cx="11" cy="11" r="8" />
+        <path d="M21 21l-4.35-4.35" />
+      </svg>
       <input
         type="text"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
         placeholder="Search products, brands..."
-        className="w-full bg-[#0e0e0e] border border-[#2a2a2a] rounded-lg px-4 py-2.5 text-sm text-white placeholder-[#555] focus:outline-none focus:border-[#d4a24e]/50 transition-colors"
+        className="w-full bg-[#111] border border-[#1e1e1e] rounded pl-9 pr-16 py-2 text-xs text-white placeholder-[#444] focus:outline-none focus:border-[#4a5c3a]/50 transition-colors"
       />
       <button
         type="submit"
-        className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1 text-xs bg-[#d4a24e] text-black font-semibold rounded-md hover:bg-[#b8892f] transition-colors"
+        className="absolute right-1.5 top-1/2 -translate-y-1/2 px-3 py-1 text-[10px] bg-[#4a5c3a] text-white font-bold rounded hover:bg-[#5a6c4a] transition-colors uppercase tracking-wider"
       >
         Search
       </button>
